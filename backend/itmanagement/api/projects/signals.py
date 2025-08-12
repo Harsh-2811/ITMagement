@@ -2,7 +2,7 @@ from django.db.models.signals import post_save
 from django.dispatch import receiver
 from django.utils import timezone
 import datetime
-from ..deadline.models import DeadlineNotification
+from projects.models import DeadlineNotification
 from dailytask.models import DailyTask
 from projects.models import Milestone
 from sprints.models import Sprint 

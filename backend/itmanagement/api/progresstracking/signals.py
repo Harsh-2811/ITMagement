@@ -7,15 +7,14 @@ from .background_tasks import generate_progress_report
 
 @receiver(post_save, sender=DailyTask)
 def push_task_update(sender, instance, **kwargs):
-    # Broadcast task progress to project-specific channel
     channel = f'project-{instance.project.id}'
     django_eventstream.send_event(
-        channel,
-        type='task_update',
+        channel,                     # first positional arg: channel
+        'task_update',               # second positional arg: event_type
         data={
             'task_id': instance.id,
-            'task_name': instance.name,
-            'progress': instance.progress,
+            'task_name': instance.title,
+            'progress': instance.status,
             'updated_at': instance.updated_at.isoformat(),
         }
     )

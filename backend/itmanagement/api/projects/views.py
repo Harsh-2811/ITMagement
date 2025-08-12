@@ -162,6 +162,7 @@ class DeadlineNotificationDetailView(generics.RetrieveUpdateDestroyAPIView):
 #  Admin Trigger: Run Deadline Processing 
 class RunDeadlineProcessingNowView(APIView):
     permission_classes = [IsAdminUser]
+    # permission_classes = [IsAuthenticated]
 
     def post(self, request, *args, **kwargs):
         try:
@@ -178,8 +179,19 @@ class CriticalPathView(APIView):
 
     def get(self, request, *args, **kwargs):
         project_id = request.query_params.get("project")
+        print(f"project_id raw value: {repr(project_id)}")
+        project_id = request.query_params.get("project")
+        if project_id:
+            project_id = project_id.strip()
+
         if not project_id or not project_id.isdigit():
-            return Response({"detail": "project param required and must be numeric"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+            {"detail": "project param required and must be numeric"},
+            status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # if not project_id or not project_id.isdigit():
+        #     return Response({"detail": "project param required and must be numeric"}, status=status.HTTP_400_BAD_REQUEST)
         try:
             cp = compute_critical_path(int(project_id))
             serializer = CriticalPathSerializer(cp)

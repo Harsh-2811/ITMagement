@@ -44,6 +44,7 @@ INSTALLED_APPS = [
     'rest_framework',
     'channels',
     'drf_spectacular',
+    'drf_yasg',
     # 'api.agreements',
     'api.partners',
     'api.employees',

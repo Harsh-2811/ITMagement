@@ -47,13 +47,22 @@ class Project(TimeStampedModel):
 
     name = models.CharField(max_length=255)
     project_id = models.CharField(max_length=100, unique=True, editable=False)
+    # project_id = models.UUIDField(
+    #     default=uuid.uuid4,
+    #     editable=False,
+    #     unique=True
+    # )
     client = models.ForeignKey(Client, on_delete=models.CASCADE, related_name='projects')
     start_date = models.DateField()
     end_date = models.DateField()
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.PLANNING)
     priority = models.CharField(max_length=10, choices=Priority.choices, default=Priority.MEDIUM)
     department = models.CharField(max_length=100)
-
+    members = models.ManyToManyField(
+    settings.AUTH_USER_MODEL,
+    related_name="projects",
+    blank=True
+)
     class Meta:
         ordering = ['-created_at']
 
@@ -61,9 +70,9 @@ class Project(TimeStampedModel):
         if not self.project_id:
             self.project_id = f"PRJ-{uuid.uuid4().hex[:8].upper()}"
         super().save(*args, **kwargs)
-
     def __str__(self):
-        return f"{self.name} ({self.project_id})"
+        return f"{self.name} (PRJ-{str(self.project_id)[:8].upper()})"
+
 
 
 # Project Scope

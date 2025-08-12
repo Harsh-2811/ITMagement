@@ -39,6 +39,7 @@ class ProgressUpdateDetailView(generics.RetrieveUpdateAPIView):
 
 class BurndownAPIView(generics.GenericAPIView):
     permission_classes = [permissions.IsAuthenticated, IsProjectMember]
+    # permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request, *args, **kwargs):
         project_id = request.query_params.get("project")
@@ -51,6 +52,7 @@ class BurndownAPIView(generics.GenericAPIView):
 
 class GanttAPIView(generics.GenericAPIView):
     permission_classes = [permissions.IsAuthenticated, IsProjectMember]
+    # permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request, *args, **kwargs):
         project_id = request.query_params.get("project")
@@ -62,6 +64,7 @@ class GanttAPIView(generics.GenericAPIView):
 
 class MetricsAPIView(generics.GenericAPIView):
     permission_classes = [permissions.IsAuthenticated, IsProjectMember]
+    # permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request, *args, **kwargs):
         project_id = request.query_params.get("project")
@@ -73,6 +76,7 @@ class MetricsAPIView(generics.GenericAPIView):
 
 class RequestProgressReportView(generics.CreateAPIView):
     permission_classes = [permissions.IsAuthenticated, IsProjectMember]
+    # permission_classes = [permissions.IsAuthenticated]
 
     def create(self, request, *args, **kwargs):
         project_id = request.data.get("project") or request.query_params.get("project")
@@ -90,7 +94,8 @@ class RequestProgressReportView(generics.CreateAPIView):
 
 class ProgressReportListView(generics.ListAPIView):
     serializer_class = ProgressReportSerializer
-    permission_classes = [permissions.IsAuthenticated, IsProjectMember]
+    # permission_classes = [permissions.IsAuthenticated, IsProjectMember]
+    permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
         project_id = self.request.query_params.get("project")
