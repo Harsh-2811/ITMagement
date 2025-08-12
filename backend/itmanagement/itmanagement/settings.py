@@ -56,6 +56,7 @@ INSTALLED_APPS = [
     'rest_framework_simplejwt',
     'rest_framework_simplejwt.token_blacklist',
     'django_eventstream',
+    'background_task',
 ]
 
 CHANNEL_LAYERS = {

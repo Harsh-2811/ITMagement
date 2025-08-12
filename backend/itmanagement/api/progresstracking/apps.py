@@ -5,4 +5,4 @@ class ProgressTrackingConfig(AppConfig):
     name = 'api.progresstracking'
 
     def ready(self):
-        import progresstracking.signals
+        import api.progresstracking.signals

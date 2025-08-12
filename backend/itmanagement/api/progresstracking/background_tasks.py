@@ -1,12 +1,12 @@
 import os
 import csv
 from django.conf import settings
-from background_tasks import background
+from background_task import background
 from django.utils import timezone
 from .models import ProgressReport
 from .utils import burndown_series, gantt_payload, performance_metrics, ensure_report_dir
 from django.contrib.auth import get_user_model
-from dailytask.models import DailyTask
+from api.dailytask.models import DailyTask
 
 
 User = get_user_model()

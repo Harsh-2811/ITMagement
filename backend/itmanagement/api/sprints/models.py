@@ -1,7 +1,7 @@
 from django.db import models
 # from django.contrib.auth.models import User
 from django.utils.translation import gettext_lazy as _
-from ..projects.models import Project
+from api.projects.models import Project
 from django.contrib.auth import get_user_model
 
 User = get_user_model()

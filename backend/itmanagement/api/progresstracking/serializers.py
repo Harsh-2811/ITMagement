@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from .models import ProgressReport
-from dailytask.models import DailyTask
-from projects.models import Milestone  
+from api.dailytask.models import DailyTask
+from api.projects.models import Milestone  
 from .models import ProgressUpdate
 from .models import ProgressUpdate, ProgressReport
 

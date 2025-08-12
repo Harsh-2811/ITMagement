@@ -2,8 +2,8 @@ from datetime import date, timedelta
 from django.db.models import Sum, Count, Q
 from django.conf import settings
 import os
-from dailytask.models import DailyTask, TaskTimeLog  ,TaskDependency
-from projects.models import Milestone 
+from api.dailytask.models import DailyTask, TaskTimeLog  ,TaskDependency
+from api.projects.models import Milestone 
 
 def _get_task_logged_hours(task):
     """

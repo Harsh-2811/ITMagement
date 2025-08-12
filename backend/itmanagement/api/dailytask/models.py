@@ -1,7 +1,7 @@
 from django.db import models
 from django.conf import settings 
-from ..sprints.models import Sprint
-from ..projects.models import Project
+from api.sprints.models import Sprint
+from api.projects.models import Project
 
 
 

@@ -8,7 +8,7 @@ from .models import ProgressUpdate, ProgressReport
 from .serializers import ProgressUpdateSerializer, ProgressReportSerializer
 from .permissions import IsProjectMember
 from .services import burndown_series, gantt_payload, performance_metrics
-from projects.models import Project
+from api.projects.models import Project
 import os
 from django.conf import settings
 
@@ -71,22 +71,22 @@ class MetricsAPIView(generics.GenericAPIView):
         data = performance_metrics(project_id=int(project_id))
         return Response(data)
 
-@api_view(["POST"])
-@permission_classes([permissions.IsAuthenticated, IsProjectMember])
-def request_progress_report(request):
-    """
-    Enqueue background job to generate a progress report.
-    POST JSON: {"project": <id>}
-    Response: report queued (report_id if available)
-    """
-    project_id = request.data.get("project") or request.query_params.get("project")
-    if not project_id:
-        return Response({"detail": "project param required"}, status=400)
-    get_object_or_404(Project, id=project_id)
-    user_id = request.user.id
-    from .background_tasks import generate_progress_report  # Import here to avoid circular imports
-    job = generate_progress_report(project_id, user_id, schedule=0)
-    return Response({"detail": "Report generation scheduled."}, status=202)
+class RequestProgressReportView(generics.CreateAPIView):
+    permission_classes = [permissions.IsAuthenticated, IsProjectMember]
+
+    def create(self, request, *args, **kwargs):
+        project_id = request.data.get("project") or request.query_params.get("project")
+        if not project_id:
+            return Response({"detail": "project param required"}, status=status.HTTP_400_BAD_REQUEST)
+
+        get_object_or_404(Project, id=project_id)
+        user_id = request.user.id
+
+        from .background_tasks import generate_progress_report
+
+        generate_progress_report(project_id, user_id, schedule=0)
+        return Response({"detail": "Report generation scheduled."}, status=status.HTTP_202_ACCEPTED)
+
 
 class ProgressReportListView(generics.ListAPIView):
     serializer_class = ProgressReportSerializer
@@ -98,21 +98,27 @@ class ProgressReportListView(generics.ListAPIView):
             return ProgressReport.objects.none()
         return ProgressReport.objects.filter(project_id=project_id).order_by("-generated_on")
 
-@api_view(["GET"])
-@permission_classes([permissions.IsAuthenticated, IsProjectMember])
-def download_report_csv(request, pk):
-    """
-    Download CSV file for a ProgressReport (if csv_file exists).
-    PK is ProgressReport id.
-    """
-    pr = get_object_or_404(ProgressReport, id=pk)
-    if not pr.csv_file:
-        return Response({"detail": "No CSV available for this report."}, status=404)
-    media_root = getattr(settings, "MEDIA_ROOT", None)
-    if not media_root:
-        return Response({"detail": "MEDIA_ROOT not configured"}, status=500)
-    abs_path = os.path.normpath(os.path.join(media_root, pr.csv_file.lstrip("/\\")))
-    if not os.path.exists(abs_path):
-        return Response({"detail": "CSV file not found on server."}, status=404)
-    from django.http import FileResponse
-    return FileResponse(open(abs_path, "rb"), as_attachment=True, filename=os.path.basename(abs_path))
+
+class DownloadReportCSVView(generics.RetrieveAPIView):
+    permission_classes = [permissions.IsAuthenticated, IsProjectMember]
+    queryset = ProgressReport.objects.all()
+    lookup_field = "pk"
+    serializer_class = ProgressReportSerializer 
+
+    def retrieve(self, request, *args, **kwargs):
+        pr = self.get_object()
+
+        if not pr.csv_file:
+            return Response({"detail": "No CSV available for this report."}, status=status.HTTP_404_NOT_FOUND)
+
+        media_root = getattr(settings, "MEDIA_ROOT", None)
+        if not media_root:
+            return Response({"detail": "MEDIA_ROOT not configured"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        abs_path = os.path.normpath(os.path.join(media_root, pr.csv_file.lstrip("/\\")))
+
+        if not os.path.exists(abs_path):
+            return Response({"detail": "CSV file not found on server."}, status=status.HTTP_404_NOT_FOUND)
+
+        from django.http import FileResponse
+        return FileResponse(open(abs_path, "rb"), as_attachment=True, filename=os.path.basename(abs_path))

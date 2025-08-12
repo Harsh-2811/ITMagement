@@ -1,10 +1,9 @@
 from django.db.models.signals import post_save
 from django.dispatch import receiver
-from dailytask.models import DailyTask
-from projects.models import Milestone  
-from dailytask.models import DailyTask
+from api.dailytask.models import DailyTask
+from api.projects.models import Milestone  
 import django_eventstream
-from background_tasks import generate_progress_report
+from .background_tasks import generate_progress_report
 
 @receiver(post_save, sender=DailyTask)
 def push_task_update(sender, instance, **kwargs):

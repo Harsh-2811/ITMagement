@@ -1,5 +1,5 @@
 from rest_framework import permissions
-from projects.models import Project
+from api.projects.models import Project
 
 class IsProjectMember(permissions.BasePermission):
     """
