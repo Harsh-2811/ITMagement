@@ -54,6 +54,7 @@ INSTALLED_APPS = [
     'api.sprints',
     'api.dailytask',
     'api.progresstracking',
+    'api.income',
     'rest_framework_simplejwt',
     'rest_framework_simplejwt.token_blacklist',
     'django_eventstream',

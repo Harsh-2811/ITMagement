@@ -74,22 +74,58 @@ class MetricsAPIView(generics.GenericAPIView):
         data = performance_metrics(project_id=int(project_id))
         return Response(data)
 
+from .background_tasks import generate_progress_report
 class RequestProgressReportView(generics.CreateAPIView):
-    permission_classes = [permissions.IsAuthenticated, IsProjectMember]
-    # permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated]
 
     def create(self, request, *args, **kwargs):
-        project_id = request.data.get("project") or request.query_params.get("project")
-        if not project_id:
+        project_code = (
+            request.data.get("project")
+            or request.data.get("project_id")
+            or request.query_params.get("project")
+            or request.query_params.get("project_id")
+        )
+
+        if not project_code:
             return Response({"detail": "project param required"}, status=status.HTTP_400_BAD_REQUEST)
 
-        get_object_or_404(Project, id=project_id)
+        project = get_object_or_404(Project, project_id=project_code)
         user_id = request.user.id
 
-        from .background_tasks import generate_progress_report
+        # Pass integer PK for DB operations
+        generate_progress_report(
+            project_id=int(project.id),
+            user_id=int(user_id),
+            schedule=0
+        )
 
-        generate_progress_report(project_id, user_id, schedule=0)
         return Response({"detail": "Report generation scheduled."}, status=status.HTTP_202_ACCEPTED)
+# class RequestProgressReportView(generics.CreateAPIView):
+#     permission_classes = [permissions.IsAuthenticated]
+
+#     def create(self, request, *args, **kwargs):
+#         project_code = (
+#             request.data.get("project")
+#             or request.data.get("project_id")
+#             or request.query_params.get("project")
+#             or request.query_params.get("project_id")
+#         )
+
+#         if not project_code:
+#             return Response({"detail": "project param required"}, status=status.HTTP_400_BAD_REQUEST)
+
+#         project = get_object_or_404(Project, project_id=project_code)
+#         user_id = request.user.id
+
+#         # Pass only JSON-serializable arguments
+#         generate_progress_report(
+#             # project_id=str(project.project_id),
+#             project_id=int(project.project_id),
+#             user_id=int(user_id),
+#             schedule=0
+#         )
+
+#         return Response({"detail": "Report generation scheduled."}, status=status.HTTP_202_ACCEPTED)
 
 
 class ProgressReportListView(generics.ListAPIView):
@@ -105,7 +141,8 @@ class ProgressReportListView(generics.ListAPIView):
 
 
 class DownloadReportCSVView(generics.RetrieveAPIView):
-    permission_classes = [permissions.IsAuthenticated, IsProjectMember]
+    # permission_classes = [permissions.IsAuthenticated, IsProjectMember]
+    permission_classes = [permissions.IsAuthenticated]
     queryset = ProgressReport.objects.all()
     lookup_field = "pk"
     serializer_class = ProgressReportSerializer 

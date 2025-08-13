@@ -5,7 +5,8 @@ from api.dailytask.models import DailyTask
 from api.projects.models import Milestone
 User = settings.AUTH_USER_MODEL
 class ProgressUpdate(models.Model):
-    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="progress_updates")
+    # project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="progress_updates")
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, null=True, blank=True)
     task = models.ForeignKey(DailyTask, on_delete=models.SET_NULL, null=True, blank=True, related_name="progress_updates")
     milestone = models.ForeignKey(Milestone, on_delete=models.SET_NULL, null=True, blank=True, related_name="progress_updates")
     progress_percent = models.DecimalField(max_digits=5, decimal_places=2)  # 0 to 100

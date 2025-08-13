@@ -11,5 +11,4 @@ urlpatterns = [
     path('progress-report/request/', RequestProgressReportView.as_view(), name='request-progress-report'),
     path('progress-report/list/', ProgressReportListView.as_view(), name='progress-report-list'),
     path('progress-report/download/<int:pk>/', DownloadReportCSVView.as_view(), name='download-progress-report-csv'),
-
 ]
