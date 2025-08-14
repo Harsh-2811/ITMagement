@@ -11,6 +11,8 @@ from .services import burndown_series, gantt_payload, performance_metrics
 from api.projects.models import Project
 import os
 from django.conf import settings
+from .background_tasks import generate_progress_report
+
 
 class ProgressUpdateListCreateView(generics.ListCreateAPIView):
     serializer_class = ProgressUpdateSerializer
@@ -74,11 +76,15 @@ class MetricsAPIView(generics.GenericAPIView):
         data = performance_metrics(project_id=int(project_id))
         return Response(data)
 
-from .background_tasks import generate_progress_report
+
 class RequestProgressReportView(generics.CreateAPIView):
+    """
+    API to request generation of a progress report for a specific project.
+    """
     permission_classes = [permissions.IsAuthenticated]
 
     def create(self, request, *args, **kwargs):
+        # Try getting project from multiple possible sources
         project_code = (
             request.data.get("project")
             or request.data.get("project_id")
@@ -87,61 +93,43 @@ class RequestProgressReportView(generics.CreateAPIView):
         )
 
         if not project_code:
-            return Response({"detail": "project param required"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"detail": "Project ID or project_id is required."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
-        project = get_object_or_404(Project, project_id=project_code)
-        user_id = request.user.id
+        # Normalize to string (avoid UUID JSON serialization issues)
+        project_code = str(project_code)
 
-        # Pass integer PK for DB operations
-        generate_progress_report(
-            project_id=int(project.id),
-            user_id=int(user_id),
-            schedule=0
+        # Look up project by 'id' or 'project_id' field
+        try:
+            project = get_object_or_404(Project, pk=project_code)
+        except Exception:
+            project = get_object_or_404(Project, project_id=project_code)
+
+        # Trigger background task (pass as strings to avoid UUID serialization error)
+        generate_progress_report(str(project.id), str(request.user.id), schedule=0)
+
+        return Response(
+            {"detail": f"Progress report generation started for project '{project.name}'."},
+            status=status.HTTP_202_ACCEPTED
         )
-
-        return Response({"detail": "Report generation scheduled."}, status=status.HTTP_202_ACCEPTED)
-# class RequestProgressReportView(generics.CreateAPIView):
-#     permission_classes = [permissions.IsAuthenticated]
-
-#     def create(self, request, *args, **kwargs):
-#         project_code = (
-#             request.data.get("project")
-#             or request.data.get("project_id")
-#             or request.query_params.get("project")
-#             or request.query_params.get("project_id")
-#         )
-
-#         if not project_code:
-#             return Response({"detail": "project param required"}, status=status.HTTP_400_BAD_REQUEST)
-
-#         project = get_object_or_404(Project, project_id=project_code)
-#         user_id = request.user.id
-
-#         # Pass only JSON-serializable arguments
-#         generate_progress_report(
-#             # project_id=str(project.project_id),
-#             project_id=int(project.project_id),
-#             user_id=int(user_id),
-#             schedule=0
-#         )
-
-#         return Response({"detail": "Report generation scheduled."}, status=status.HTTP_202_ACCEPTED)
 
 
 class ProgressReportListView(generics.ListAPIView):
     serializer_class = ProgressReportSerializer
     # permission_classes = [permissions.IsAuthenticated, IsProjectMember]
     permission_classes = [permissions.IsAuthenticated]
-
     def get_queryset(self):
         project_id = self.request.query_params.get("project")
-        if not project_id:
-            return ProgressReport.objects.none()
-        return ProgressReport.objects.filter(project_id=project_id).order_by("-generated_on")
+        if project_id:
+            return ProgressReport.objects.filter(project_id=project_id).order_by("-generated_on")
+        return ProgressReport.objects.all().order_by("-generated_on")
+
+
 
 
 class DownloadReportCSVView(generics.RetrieveAPIView):
-    # permission_classes = [permissions.IsAuthenticated, IsProjectMember]
     permission_classes = [permissions.IsAuthenticated]
     queryset = ProgressReport.objects.all()
     lookup_field = "pk"
@@ -153,14 +141,32 @@ class DownloadReportCSVView(generics.RetrieveAPIView):
         if not pr.csv_file:
             return Response({"detail": "No CSV available for this report."}, status=status.HTTP_404_NOT_FOUND)
 
-        media_root = getattr(settings, "MEDIA_ROOT", None)
-        if not media_root:
-            return Response({"detail": "MEDIA_ROOT not configured"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-        abs_path = os.path.normpath(os.path.join(media_root, pr.csv_file.lstrip("/\\")))
-
+        abs_path = pr.csv_file.path
         if not os.path.exists(abs_path):
             return Response({"detail": "CSV file not found on server."}, status=status.HTTP_404_NOT_FOUND)
 
-        from django.http import FileResponse
         return FileResponse(open(abs_path, "rb"), as_attachment=True, filename=os.path.basename(abs_path))
+# class DownloadReportCSVView(generics.RetrieveAPIView):
+#     # permission_classes = [permissions.IsAuthenticated, IsProjectMember]
+#     permission_classes = [permissions.IsAuthenticated]
+#     queryset = ProgressReport.objects.all()
+#     lookup_field = "pk"
+#     serializer_class = ProgressReportSerializer 
+
+#     def retrieve(self, request, *args, **kwargs):
+#         pr = self.get_object()
+
+#         if not pr.csv_file:
+#             return Response({"detail": "No CSV available for this report."}, status=status.HTTP_404_NOT_FOUND)
+
+#         media_root = getattr(settings, "MEDIA_ROOT", None)
+#         if not media_root:
+#             return Response({"detail": "MEDIA_ROOT not configured"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+#         abs_path = os.path.normpath(os.path.join(media_root, pr.csv_file.lstrip("/\\")))
+
+#         if not os.path.exists(abs_path):
+#             return Response({"detail": "CSV file not found on server."}, status=status.HTTP_404_NOT_FOUND)
+
+#         from django.http import FileResponse
+#         return FileResponse(open(abs_path, "rb"), as_attachment=True, filename=os.path.basename(abs_path))

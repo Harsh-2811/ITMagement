@@ -47,11 +47,6 @@ class Project(TimeStampedModel):
 
     name = models.CharField(max_length=255)
     project_id = models.CharField(max_length=100, unique=True, editable=False)
-    # project_id = models.UUIDField(
-    #     default=uuid.uuid4,
-    #     editable=False,
-    #     unique=True
-    # )
     client = models.ForeignKey(Client, on_delete=models.CASCADE, related_name='projects')
     start_date = models.DateField()
     end_date = models.DateField()

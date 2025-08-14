@@ -1,50 +1,64 @@
-import os
-import csv
-from django.conf import settings
-from background_task import background
-from django.utils import timezone
-from .models import ProgressReport
-from .utils import burndown_series, gantt_payload, performance_metrics, ensure_report_dir
-from django.contrib.auth import get_user_model
-from api.dailytask.models import DailyTask
+# import datetime
+# import uuid
+# import os
+# import csv
+# from django.conf import settings
+# from background_task import background
+# from django.utils import timezone
+# from .models import ProgressReport
+# from .utils import burndown_series, gantt_payload, performance_metrics, ensure_report_dir
+# from django.contrib.auth import get_user_model
+# from api.dailytask.models import DailyTask
+# from api.projects.models import Project
+# from django.core.files import File
+# User = get_user_model()
 
-User = get_user_model()
 
-def convert_uuids(obj):
-    if isinstance(obj, dict):
-        return {k: convert_uuids(v) for k, v in obj.items()}
-    elif isinstance(obj, list):
-        return [convert_uuids(v) for v in obj]
-    elif hasattr(obj, "hex"):  # UUID object
-        return str(obj)
-    else:
-        return obj
-    
+# def make_json_safe(obj):
+#     """Recursively convert UUIDs, datetimes, and unsupported types to JSON-safe."""
+#     if isinstance(obj, dict):
+#         return {k: make_json_safe(v) for k, v in obj.items()}
+#     elif isinstance(obj, list):
+#         return [make_json_safe(v) for v in obj]
+#     elif isinstance(obj, uuid.UUID):
+#         return str(obj)
+#     elif isinstance(obj, (datetime.datetime, datetime.date)):
+#         return obj.isoformat()
+#     elif hasattr(obj, "_meta"):  # Django model
+#         return str(obj.pk)
+#     else:
+#         return obj
+
+
 # @background(schedule=5)
 # def generate_progress_report(project_id, user_id=None):
-#     """
-#     Background job to generate JSON analytics and CSV file.
-#     Saves ProgressReport (report_data) and csv_file relative to MEDIA_ROOT.
-#     """
-#     # Ensure project_id is string
-#     project_id = str(project_id)
+#     """Generate JSON analytics and CSV report for a project."""
 
-#     # compute analytics
+#     # Ensure project exists
+#     try:
+#         project = Project.objects.get(pk=project_id)
+#     except Project.DoesNotExist:
+#         return None
+
+#     project_code = project.project_id
+
+#     # Prepare analytics
 #     data = {
 #         "burndown": burndown_series(project_id, days=30),
 #         "gantt": gantt_payload(project_id),
 #         "metrics": performance_metrics(project_id)
 #     }
+#     data = make_json_safe(data)
 
+#     # CSV generation
 #     csv_relpath = ""
 #     try:
 #         out_dir = ensure_report_dir()
 #         ts = timezone.now().strftime("%Y%m%d_%H%M%S")
-#         filename = f"progress_report_project_{project_id}_{ts}.csv"
+#         filename = f"progress_report_{project_code}_{ts}.csv"
 #         filepath = os.path.join(out_dir, filename)
 
-#         # write CSV with tasks summary
-#         tasks = DailyTask.objects.filter(project__project_id=project_id).select_related("assigned_to", "sprint")
+#         tasks = DailyTask.objects.filter(project_id=project_id).select_related("assigned_to", "sprint")
 #         with open(filepath, "w", newline="", encoding="utf-8") as fh:
 #             writer = csv.writer(fh)
 #             writer.writerow([
@@ -59,7 +73,7 @@ def convert_uuids(obj):
 #                 except Exception:
 #                     logged = getattr(t, "logged_hours", "")
 #                 try:
-#                     remaining = (float(est) - float(logged)) if est != "" and logged != "" else ""
+#                     remaining = (float(est) - float(logged)) if est and logged else ""
 #                 except Exception:
 #                     remaining = ""
 #                 writer.writerow([
@@ -72,108 +86,108 @@ def convert_uuids(obj):
 #                     est,
 #                     logged,
 #                     remaining,
-#                     getattr(t, "start_date", "") and getattr(t, "start_date").isoformat(),
-#                     getattr(t, "due_date", "") and getattr(t, "due_date").isoformat(),
+#                     t.start_date.isoformat() if getattr(t, "start_date", None) else "",
+#                     t.due_date.isoformat() if getattr(t, "due_date", None) else "",
 #                 ])
 #         csv_relpath = os.path.join("progress_reports", filename)
 #     except Exception:
 #         csv_relpath = ""
 
-#     # get user object
+#     # Get user object
 #     user = None
 #     if user_id:
 #         try:
 #             user = User.objects.get(id=user_id)
 #         except User.DoesNotExist:
-#             user = None
+#             pass
 
-#     # store ProgressReport
-#     report = ProgressReport.objects.create(
+#     # Save report
+#     with open(filepath, "rb") as f:
+#         report = ProgressReport.objects.create(
 #         project_id=project_id,
 #         generated_by=user,
 #         report_data=data,
-#         csv_file=csv_relpath
-#     )
+#             )
+#         report.csv_file.save(filename, File(f), save=True)
+#     # report = ProgressReport.objects.create(
+#     #     project_id=project_id,
+#     #     generated_by=user,
+#     #     report_data=data,
+#     #     csv_file=csv_relpath
+#     # )
 
 #     return report.id
-# background_tasks.py
+import datetime
+import uuid
 import os
 import csv
 from django.conf import settings
 from background_task import background
 from django.utils import timezone
+from django.core.files import File
+from django.contrib.auth import get_user_model
+
 from .models import ProgressReport
 from .utils import burndown_series, gantt_payload, performance_metrics, ensure_report_dir
-from django.contrib.auth import get_user_model
 from api.dailytask.models import DailyTask
 from api.projects.models import Project
 
 User = get_user_model()
-# ensure user variable always exists
+
+
+def make_json_safe(obj):
+    """Recursively convert UUIDs, datetimes, and unsupported types to JSON-safe."""
+    if isinstance(obj, dict):
+        return {k: make_json_safe(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [make_json_safe(v) for v in obj]
+    elif isinstance(obj, uuid.UUID):
+        return str(obj)
+    elif isinstance(obj, (datetime.datetime, datetime.date)):
+        return obj.isoformat()
+    elif hasattr(obj, "_meta"):  # Django model
+        return str(obj.pk)
+    else:
+        return obj
 
 
 @background(schedule=5)
 def generate_progress_report(project_id, user_id=None):
-    def convert_uuids(obj):
-        if isinstance(obj, dict):
-            return {k: convert_uuids(v) for k, v in obj.items()}
-        elif isinstance(obj, list):
-            return [convert_uuids(v) for v in obj]
-        elif hasattr(obj, "hex"):  # UUID object
-            return str(obj)
-        else:
-            return obj
+    """Generate JSON analytics and CSV report for a project."""
+    try:
+        project = Project.objects.get(pk=project_id)
+    except Project.DoesNotExist:
+        return None
 
-# In generate_progress_report, before saving:
     data = {
         "burndown": burndown_series(project_id, days=30),
         "gantt": gantt_payload(project_id),
         "metrics": performance_metrics(project_id)
     }
+    data = make_json_safe(data)
 
-# convert UUIDs in analytics to strings
-    data = convert_uuids(data)
+    # Get user object
     user = None
-    if user_id is not None:
+    if user_id:
         try:
             user = User.objects.get(id=user_id)
         except User.DoesNotExist:
-            user = None
-# then create ProgressReport
+            pass
+
+    # Create the report first
     report = ProgressReport.objects.create(
         project_id=project_id,
         generated_by=user,
         report_data=data,
-        csv_file=csv_relpath
     )
 
-    """
-    Background job to generate JSON analytics and CSV file.
-    Saves ProgressReport (report_data) and csv_file relative to MEDIA_ROOT.
-    """
-    # Fetch project object
+    # Generate CSV
     try:
-        project = Project.objects.get(pk=project_id)
-    except Project.DoesNotExist:
-        return None  # project deleted, stop task
-
-    project_code = project.project_id  # string for filenames/logging
-
-    # compute analytics
-    data = {
-        "burndown": burndown_series(project_id, days=30),
-        "gantt": gantt_payload(project_id),
-        "metrics": performance_metrics(project_id)
-    }
-
-    csv_relpath = ""
-    try:
-        out_dir = ensure_report_dir()
+        out_dir = ensure_report_dir()  # Make sure this is under MEDIA_ROOT/progress_reports/
         ts = timezone.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"progress_report_{project_code}_{ts}.csv"
+        filename = f"progress_report_{project.project_id}_{ts}.csv"
         filepath = os.path.join(out_dir, filename)
 
-        # write CSV with tasks summary
         tasks = DailyTask.objects.filter(project_id=project_id).select_related("assigned_to", "sprint")
         with open(filepath, "w", newline="", encoding="utf-8") as fh:
             writer = csv.writer(fh)
@@ -189,7 +203,7 @@ def generate_progress_report(project_id, user_id=None):
                 except Exception:
                     logged = getattr(t, "logged_hours", "")
                 try:
-                    remaining = (float(est) - float(logged)) if est != "" and logged != "" else ""
+                    remaining = (float(est) - float(logged)) if est and logged else ""
                 except Exception:
                     remaining = ""
                 writer.writerow([
@@ -202,27 +216,18 @@ def generate_progress_report(project_id, user_id=None):
                     est,
                     logged,
                     remaining,
-                    getattr(t, "start_date", "") and getattr(t, "start_date").isoformat(),
-                    getattr(t, "due_date", "") and getattr(t, "due_date").isoformat(),
+                    t.start_date.isoformat() if getattr(t, "start_date", None) else "",
+                    t.due_date.isoformat() if getattr(t, "due_date", None) else "",
                 ])
-        csv_relpath = os.path.join("progress_reports", filename)
-    except Exception:
-        csv_relpath = ""
+    except Exception as e:
+        filepath = None
 
-    # get user object
-    user = None
-    if user_id:
-        try:
-            user = User.objects.get(id=user_id)
-        except User.DoesNotExist:
-            user = None
+    # Save the CSV to FileField **after report is created**
+    if filepath and os.path.exists(filepath):
+        with open(filepath, "rb") as f:
+            report.csv_file.save(os.path.basename(filepath), File(f), save=True)
 
-    # store ProgressReport
-    report = ProgressReport.objects.create(
-        project_id=project_id,  # integer PK
-        generated_by=user,
-        report_data=data,
-        csv_file=csv_relpath
-    )
+    # Force save to make sure DB column is updated
+    report.save()
 
     return report.id

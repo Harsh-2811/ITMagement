@@ -5,7 +5,6 @@ from api.dailytask.models import DailyTask
 from api.projects.models import Milestone
 User = settings.AUTH_USER_MODEL
 class ProgressUpdate(models.Model):
-    # project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="progress_updates")
     project = models.ForeignKey(Project, on_delete=models.CASCADE, null=True, blank=True)
     task = models.ForeignKey(DailyTask, on_delete=models.SET_NULL, null=True, blank=True, related_name="progress_updates")
     milestone = models.ForeignKey(Milestone, on_delete=models.SET_NULL, null=True, blank=True, related_name="progress_updates")
@@ -28,7 +27,8 @@ class ProgressReport(models.Model):
     generated_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
     generated_on = models.DateTimeField(auto_now_add=True)
     report_data = models.JSONField(null=True, blank=True)
-    csv_file = models.CharField(max_length=1024, blank=True, default="")
+    csv_file = models.FileField(upload_to='progress_reports/', null=True, blank=True)
+
 
     class Meta:
         ordering = ["-generated_on"]
