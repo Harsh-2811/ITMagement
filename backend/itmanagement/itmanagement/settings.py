@@ -74,6 +74,11 @@ CHANNEL_LAYERS = {
 DEFAULT_FROM_EMAIL = "no-reply@example.com"
 FINANCE_NOTIFICATION_EMAILS = ["finance@example.com"]
 INVOICE_REMINDER_DAYS_BEFORE = [7, 3, 1]
+INVOICE_ALLOCATE_ASYNC = False  # True to run partner allocation in background
+
+
+
+
 
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',

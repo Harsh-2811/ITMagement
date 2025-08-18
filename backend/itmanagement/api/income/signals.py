@@ -1,40 +1,47 @@
+# invoices/signals.py
+import logging
 from django.db.models.signals import post_save, post_delete
 from django.dispatch import receiver
-from .models import Invoice, InvoiceItem, Payment, PartnerIncomeShare
-from .utils import get_country_tax_rule, recalc_invoice_totals
-from .tasks import send_invoice_email_with_attachment, run_invoice_reminder_jobs
+from django.conf import settings
+
+from .models import InvoiceItem, Payment
+from .utils import allocate_payment
+
+logger = logging.getLogger(__name__)
 
 
 @receiver(post_save, sender=InvoiceItem)
 @receiver(post_delete, sender=InvoiceItem)
 def on_invoice_items_change(sender, instance, **kwargs):
-    recalc_invoice_totals(instance.invoice)
-
-
-@receiver(post_save, sender=Invoice)
-def on_invoice_save(sender, instance: Invoice, created, **kwargs):
-    # Auto-attach tax rule by country if not set
-    if instance.tax_rule is None and instance.country:
-        rule = get_country_tax_rule(instance.country)
-        if rule:
-            instance.tax_rule = rule
-            instance.save(update_fields=["tax_rule"])
-
-    # Recalc totals on create/update
-    recalc_invoice_totals(instance)
-
-    # Kick reminder worker (or schedule via cron in prod)
-    run_invoice_reminder_jobs(schedule=0)
-
-    # If invoice already 'sent', ensure email goes out
-    if instance.status == "sent":
-        send_invoice_email_with_attachment(instance.id, schedule=0)
+    try:
+        instance.invoice.recalc_totals()
+    except Exception:
+        logger.exception("Failed to recalc totals for invoice %s", getattr(instance, "invoice_id", None))
 
 
 @receiver(post_save, sender=Payment)
-def on_payment_save(sender, instance: Payment, created, **kwargs):
+def on_payment_created(sender, instance, created, **kwargs):
+    """
+    Recalc totals and allocate payment if created.
+    Allocation may be done synchronously or scheduled depending on settings.INVOICE_ALLOCATE_ASYNC.
+    """
+    try:
+        instance.invoice.recalc_totals()
+    except Exception:
+        logger.exception("Failed to recalc totals after payment %s", instance.id)
+
     if not created:
         return
-    # After payment, recompute totals and possibly flip to paid
-    inv = instance.invoice
-    recalc_invoice_totals(inv)
+
+    allocate_async = getattr(settings, "INVOICE_ALLOCATE_ASYNC", False)
+    if allocate_async:
+        try:
+            from .tasks import allocate_payment_task
+            allocate_payment_task(instance.id)
+        except Exception:
+            logger.exception("Failed to schedule allocate_payment_task for payment %s", instance.id)
+    else:
+        try:
+            allocate_payment(instance)
+        except Exception:
+            logger.exception("Allocation error (signals) for payment %s", instance.id)
