@@ -6,44 +6,45 @@ from django.utils import timezone
 from django.db.models import Count
 
 from .models import Invoice, Payment
-from .utils import generate_and_attach_pdf, allocate_payment
+# from .utils import generate_and_attach_pdf
+from .utils import allocate_payment
 
 logger = logging.getLogger(__name__)
 DEFAULT_FROM = getattr(settings, "DEFAULT_FROM_EMAIL", "no-reply@example.com")
 
 
-# === Email sending ===
-def send_invoice_email_with_attachment(invoice_id):
-    """Background task: generate invoice PDF and email to client."""
-    try:
-        inv = Invoice.objects.get(id=invoice_id)
-    except Invoice.DoesNotExist:
-        logger.warning("Invoice %s not found when trying to send email", invoice_id)
-        return
+#  Email sending 
+# def send_invoice_email_with_attachment(invoice_id):
+#     """Background task: generate invoice PDF and email to client."""
+#     try:
+#         inv = Invoice.objects.get(id=invoice_id)
+#     except Invoice.DoesNotExist:
+#         logger.warning("Invoice %s not found when trying to send email", invoice_id)
+#         return
 
-    try:
-        inv.recalc_totals()
-        generate_and_attach_pdf(inv)
+#     try:
+#         inv.recalc_totals()
+#         generate_and_attach_pdf(inv)
 
-        subject = f"Invoice #{inv.invoice_number}"
-        body = (
-            f"Hello {inv.client_name},\n\n"
-            f"Please find attached invoice #{inv.invoice_number}.\n"
-            f"Total: {inv.total_amount}\n"
-            f"Due: {inv.due_date}\n\n"
-            f"Thanks,\n{DEFAULT_FROM}"
-        )
+#         subject = f"Invoice #{inv.invoice_number}"
+#         body = (
+#             f"Hello {inv.client_name},\n\n"
+#             f"Please find attached invoice #{inv.invoice_number}.\n"
+#             f"Total: {inv.total_amount}\n"
+#             f"Due: {inv.due_date}\n\n"
+#             f"Thanks,\n{DEFAULT_FROM}"
+#         )
 
-        email = EmailMessage(subject, body, DEFAULT_FROM, [inv.client_email])
-        if inv.pdf_file and getattr(inv.pdf_file, "path", None):
-            email.attach_file(inv.pdf_file.path)
+#         email = EmailMessage(subject, body, DEFAULT_FROM, [inv.client_email])
+#         if inv.pdf_file and getattr(inv.pdf_file, "path", None):
+#             email.attach_file(inv.pdf_file.path)
 
-        email.send(fail_silently=False)
-        inv.mark_sent()
-        logger.info("Invoice %s emailed to %s", inv.invoice_number, inv.client_email)
+#         email.send(fail_silently=False)
+#         inv.mark_sent()
+#         logger.info("Invoice %s emailed to %s", inv.invoice_number, inv.client_email)
 
-    except Exception:
-        logger.exception("Failed to send invoice %s", invoice_id)
+#     except Exception:
+#         logger.exception("Failed to send invoice %s", invoice_id)
 
 
 # === Payment allocation ===

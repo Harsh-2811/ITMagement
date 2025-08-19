@@ -5,9 +5,10 @@ from django.db import models, transaction
 from django.utils import timezone
 from django.core.validators import MinValueValidator, EmailValidator
 from django.conf import settings
-
-from api.partners.models import Partner  # ensure import path
+from django.db.models import Max
+from api.partners.models import Partner  
 from api.organizations.models import Organization
+from django.core.exceptions import ValidationError
 
 AUTH_USER_MODEL = settings.AUTH_USER_MODEL
 
@@ -21,8 +22,8 @@ class Invoice(models.Model):
         OVERDUE = "overdue", "Overdue"
 
     invoice_number = models.CharField(max_length=64, unique=True, editable=False)
-    owner = models.ForeignKey(AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="invoices")
-    organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name="invoices")
+    owner = models.ForeignKey(AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="invoices", null=True, blank=True)
+    organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name="invoices", default=1)
 
     client_name = models.CharField(max_length=255)
     client_email = models.EmailField(validators=[EmailValidator()])
@@ -121,6 +122,32 @@ class Invoice(models.Model):
             self.save(update_fields=["status", "updated_at"])
             InvoiceAuditLog.objects.create(invoice=self, action="status_change", details="Marked overdue")
 
+    # def generate_invoice_number(self):
+    #     """
+    #     Generate invoice number format: INV-YYYYMM-XXXX
+    #     Example: INV-202508-0001
+    #     """
+    #     today = timezone.now()
+    #     prefix = f"INV-{today.strftime('%Y%m')}"  # INV-202508
+
+    #     # Find latest invoice number for this month
+    #     latest = Invoice.objects.filter(invoice_number__startswith=prefix).aggregate(
+    #         Max("invoice_number")
+    #     )["invoice_number__max"]
+
+    #     if latest:
+    #         # Extract last 4 digits and increment
+    #         last_number = int(latest.split("-")[-1])
+    #         new_number = last_number + 1
+    #     else:
+    #         new_number = 1
+
+    #     return f"{prefix}-{new_number:04d}"  # Padded with 4 digits
+
+    # def save(self, *args, **kwargs):
+    #     if not self.invoice_number:  
+    #         self.invoice_number = self.generate_invoice_number()
+    #     super().save(*args, **kwargs)
     def _generate_invoice_number(self):
         year = timezone.now().year
         org_code = getattr(self.organization, "code", "ORG")[:10].upper()
@@ -242,3 +269,93 @@ class PartnerAllocation(models.Model):
 
     def __str__(self):
         return f"{self.partner.user.username} <- {self.amount} (payment={self.payment.id})"
+
+
+TWOPLACES = Decimal("0.01")
+
+class TaxRule(models.Model):
+    """
+    Normalized tax configuration:
+    - country: case-insensitive match (e.g., 'India')
+    - rate_percentage: overall tax rate, e.g. 18.00 for 18%
+    - components: optional breakdown, e.g. {"cgst": 9.0, "sgst": 9.0} (sums may or may not equal rate)
+    - precedence: larger value wins if multiple active rules exist for same country
+    - active: only active rules are considered by auto-tax
+    Strong constraints + indexes for fast lookups.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    country = models.CharField(max_length=100, db_index=True)
+    name = models.CharField(max_length=120, default="GST")
+    rate_percentage = models.DecimalField(max_digits=6, decimal_places=2)
+    components = models.JSONField(null=True, blank=True)  # {"cgst":9.0,"sgst":9.0}
+    active = models.BooleanField(default=True)
+    precedence = models.PositiveIntegerField(default=100)  # higher preferred
+    note = models.TextField(blank=True, null=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = (("country", "name"),)
+        indexes = [
+            models.Index(fields=["country", "active", "precedence"]),
+        ]
+
+    def clean(self):
+        if self.rate_percentage < 0:
+            raise ValidationError("rate_percentage must be >= 0")
+        if self.components:
+            for k, v in self.components.items():
+                if Decimal(str(v)) < 0:
+                    raise ValidationError(f"Component {k} must be >= 0")
+
+    def __str__(self):
+        label = f"{self.name} {self.rate_percentage}%"
+        if self.components:
+            label += f" {self.components}"
+        return f"{label} [{self.country}] (active={self.active}, prio={self.precedence})"
+
+
+class TaxRecord(models.Model):
+    """
+    Versioned immutable snapshot of tax result per invoice.
+    - Each invoice can have multiple TaxRecords (history).
+    - The latest version is marked as active.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    invoice = models.ForeignKey(
+        "income.Invoice",
+        on_delete=models.CASCADE,
+        related_name="tax_records"
+    )
+    tax_rule = models.ForeignKey(
+        "TaxRule",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="applied_records"
+    )
+
+    version = models.PositiveIntegerField(default=1)  # increment per invoice
+    is_active = models.BooleanField(default=True)    # only 1 active record per invoice
+
+    subtotal = models.DecimalField(max_digits=14, decimal_places=2, default=Decimal("0.00"))
+    tax_amount = models.DecimalField(max_digits=14, decimal_places=2, default=Decimal("0.00"))
+    total = models.DecimalField(max_digits=14, decimal_places=2, default=Decimal("0.00"))
+    breakdown = models.JSONField(null=True, blank=True)
+    metadata = models.JSONField(null=True, blank=True)  # gstin, pos, filing tags
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["invoice", "is_active"]),
+            models.Index(fields=["created_at"]),
+        ]
+        unique_together = ("invoice", "version")  # ensures versioning per invoice
+
+    def __str__(self):
+        return f"TaxRecord(inv={self.invoice_id}, v{self.version}, tax={self.tax_amount}, active={self.is_active})"
+

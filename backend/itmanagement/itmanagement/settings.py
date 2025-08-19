@@ -45,6 +45,7 @@ INSTALLED_APPS = [
     'channels',
     'drf_spectacular',
     'drf_yasg',
+    'templates',
     # 'api.agreements',
     'api.partners',
     'api.employees',
@@ -96,7 +97,7 @@ ROOT_URLCONF = 'itmanagement.urls'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [],
+        'DIRS': ['templates'],
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [

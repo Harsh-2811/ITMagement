@@ -11,16 +11,21 @@ from django.utils import timezone
 from django.shortcuts import get_object_or_404
 from django.conf import settings
 import logging
-
-from .models import Invoice, PartnerAllocation, InvoicePartnerShare, OrgPartnerShare, Payment
+from datetime import datetime
+from .models import Invoice, PartnerAllocation, InvoicePartnerShare, OrgPartnerShare, Payment , RevenueCategory, OrgPartnerShare, InvoicePartnerShare , TaxRule, TaxRecord
 from .serializers import (
     InvoiceSerializer, PaymentSerializer, RevenueCategorySerializer,
-    OrgPartnerShareSerializer, InvoicePartnerShareSerializer, PartnerAllocationSerializer
+    OrgPartnerShareSerializer, InvoicePartnerShareSerializer, PartnerAllocationSerializer,TaxRuleSerializer, TaxRecordSerializer
 )
-from .tasks import send_invoice_email_with_attachment, allocate_payment_task
-from .utils import generate_and_attach_pdf
-
+# from .tasks import send_invoice_email_with_attachment
+from .tasks import allocate_payment_task
+from .utils import reporting_aggregate
 from .permissions import IsOwnerOrStaff
+from django.http import HttpResponse
+from django.template.loader import render_to_string
+from django.views import View
+import weasyprint
+
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +43,8 @@ class InvoiceListCreateView(generics.ListCreateAPIView):
         else:
             qs = qs.filter(owner=user)
         return qs
-
+    # def perform_create(self, serializer):
+    #     serializer.save()
     def perform_create(self, serializer):
         org = getattr(self.request.user, "organization", None)
         serializer.save(owner=self.request.user, organization=org)
@@ -53,35 +59,95 @@ class InvoiceDetailView(generics.RetrieveUpdateDestroyAPIView):
 class InvoiceSendView(APIView):
     permission_classes = [IsAuthenticated, IsOwnerOrStaff]
 
-    def post(self, request, pk):
-        invoice = get_object_or_404(Invoice, pk=pk)
-        # schedule or call immediate
-        try:
-            if getattr(settings, "USE_CELERY", False):
-                send_invoice_email_with_attachment.delay(invoice.id)
-            else:
-                send_invoice_email_with_attachment(invoice.id)
-            return Response({"detail": "Invoice email queued."}, status=status.HTTP_202_ACCEPTED)
-        except Exception:
-            logger.exception("Failed to queue invoice send %s", invoice.id)
-            return Response({"detail": "Failed to queue invoice send."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    # def post(self, request, pk):
+    #     invoice = get_object_or_404(Invoice, pk=pk)
+    #     # schedule or call immediate
+    #     try:
+    #         if getattr(settings, "USE_CELERY", False):
+    #             send_invoice_email_with_attachment.delay(invoice.id)
+    #         else:
+    #             send_invoice_email_with_attachment(invoice.id)
+    #         return Response({"detail": "Invoice email queued."}, status=status.HTTP_202_ACCEPTED)
+    #     except Exception:
+    #         logger.exception("Failed to queue invoice send %s", invoice.id)
+    #         return Response({"detail": "Failed to queue invoice send."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-class InvoicePDFView(APIView):
-    permission_classes = [IsAuthenticated, IsOwnerOrStaff]
 
-    def get(self, request, pk):
-        invoice = get_object_or_404(Invoice, pk=pk)
-        if not invoice.pdf_file:
-            generate_and_attach_pdf(invoice)
-        if not invoice.pdf_file:
-            raise Http404("PDF not available.")
-        try:
-            return FileResponse(open(invoice.pdf_file.path, "rb"), content_type="application/pdf",
-                                headers={"Content-Disposition": f'attachment; filename="{smart_str(invoice.pdf_file.name.split("/")[-1])}"'})
-        except Exception as exc:
-            logger.exception("Unable to open PDF for invoice %s: %s", pk, exc)
-            raise Http404("Unable to open PDF.")
+class InvoicePDFView(View):
+    template_name = "invoice.html"  
+    filename = "invoice.pdf"
+
+    def get_invoice_context(self, invoice_id):
+        """Build invoice data dynamically from the database"""
+        invoice = Invoice.objects.prefetch_related("items", "payments", "partner_shares__partner__allocations").get(id=invoice_id)
+
+        items = [
+            {
+                "description": item.description,
+                "quantity": item.quantity,
+                "unit_price": item.unit_price,
+                "total": item.total_price(),
+                "revenue_category": item.revenue_category.name if item.revenue_category else "",
+            }
+            for item in invoice.items.all()
+        ]
+
+        payments = [
+            {
+                "amount": p.amount,
+                "method": p.method,
+                "reference": p.reference,
+                "date": p.received_at.strftime("%d-%b-%Y"),
+            }
+            for p in invoice.payments.all()
+        ]
+
+        partners = [
+            {
+                "name": ps.partner.user.username,
+                "share_type": ps.share_type,
+                "share_value": ps.share_value,
+                "allocated_amount": sum(a.amount for a in ps.partner.allocations.filter(payment__invoice=invoice)),
+            }
+            for ps in invoice.partner_shares.all()
+        ]
+
+        context = {
+            "invoice_number": invoice.invoice_number,
+            "date": invoice.created_at.strftime("%d-%b-%Y"),
+            "due_date": invoice.due_date.strftime("%d-%b-%Y") if invoice.due_date else "",
+            "status": invoice.status,
+            "currency": invoice.currency,
+            "client": {
+                "name": invoice.client_name,
+                "email": invoice.client_email,
+                "country": invoice.client_country,
+                "state": invoice.client_state,
+            },
+            "items": items,
+            "subtotal": invoice.subtotal_amount,
+            "tax": invoice.tax_amount,
+            "total": invoice.total_amount,
+            "payments": payments,
+            "partners": partners,
+            "organization": {
+                "name": invoice.organization.name
+            }
+        }
+
+        return context
+
+    def get(self, request, invoice_id, *args, **kwargs):
+        """Generate PDF and return as response"""
+        context = self.get_invoice_context(invoice_id)
+        html = render_to_string(self.template_name, context)
+
+        response = HttpResponse(content_type="application/pdf")
+        response["Content-Disposition"] = f'attachment; filename="{self.filename}"'
+        weasyprint.HTML(string=html).write_pdf(response)
+
+        return response
 
 
 class InvoiceMarkPaidView(APIView):
@@ -101,18 +167,6 @@ class InvoiceMarkPaidView(APIView):
             else:
                 invoice.record_payment(amount=remaining, method="manual_settlement")
         return Response({"detail": "Invoice marked as paid."}, status=status.HTTP_200_OK)
-
-
-class GenerateInvoicePDFView(APIView):
-    permission_classes = [IsAuthenticated, IsOwnerOrStaff]
-
-    def post(self, request, pk):
-        invoice = get_object_or_404(Invoice, pk=pk)
-        path = generate_and_attach_pdf(invoice)
-        if not path:
-            return Response({"message": "Failed to generate PDF."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-        return Response({"message": "PDF generated and attached successfully", "pdf_url": invoice.pdf_file.url}, status=status.HTTP_200_OK)
-
 
 class RecordPaymentView(APIView):
     """
@@ -162,10 +216,6 @@ class InvoiceCheckOverdueView(APIView):
         return Response({"message": f"{len(updated)} invoice(s) marked as overdue.", "overdue_invoices": serializer.data})
 
 
-# Revenue & Partner endpoints (CRUD)
-from rest_framework import generics
-from .serializers import RevenueCategorySerializer, OrgPartnerShareSerializer, InvoicePartnerShareSerializer, PartnerAllocationSerializer
-from .models import RevenueCategory, OrgPartnerShare, InvoicePartnerShare, PartnerAllocation
 
 
 class RevenueCategoryListCreateView(generics.ListCreateAPIView):
@@ -218,3 +268,54 @@ class PartnerAllocationListView(generics.ListAPIView):
         if partner_id:
             qs = qs.filter(partner_id=partner_id)
         return qs.order_by("-created_at")
+
+
+class TaxRuleListCreateView(generics.ListCreateAPIView):
+    queryset = TaxRule.objects.all().order_by("-updated_at")
+    serializer_class = TaxRuleSerializer
+    permission_classes = [IsAuthenticated]
+
+class TaxRuleDetailView(generics.RetrieveUpdateDestroyAPIView):
+    queryset = TaxRule.objects.all()
+    serializer_class = TaxRuleSerializer
+    permission_classes = [IsAuthenticated]
+
+class ApplyTaxToInvoiceView(generics.UpdateAPIView):
+    """
+    PATCH /invoices/<uuid:pk>/apply-tax/
+    body: {"tax_rule_id": "<uuid optional>"}
+    """
+    queryset = Invoice.objects.all()
+    serializer_class = TaxRecordSerializer  # response only
+
+    permission_classes = [IsAuthenticated]
+
+    def patch(self, request, *args, **kwargs):
+        invoice = self.get_object()
+        rule_id = request.data.get("tax_rule_id")
+        rule = TaxRule.objects.filter(pk=rule_id).first() if rule_id else None
+        tr = compute_and_store_tax(invoice, rule=rule)
+        return Response(TaxRecordSerializer(tr).data, status=status.HTTP_200_OK)
+
+class TaxRecordListView(generics.ListAPIView):
+    queryset = TaxRecord.objects.select_related("invoice", "tax_rule").all().order_by("-created_at")
+    serializer_class = TaxRecordSerializer
+    permission_classes = [IsAuthenticated]
+
+class FinancialReportView(APIView):
+    """
+    GET /income/reports?start=2025-01-01&end=2025-03-31&organization=1
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        start = request.query_params.get("start")
+        end = request.query_params.get("end")
+        org = request.query_params.get("organization")
+
+        start_d = datetime.strptime(start, "%Y-%m-%d").date() if start else None
+        end_d = datetime.strptime(end, "%Y-%m-%d").date() if end else None
+        org_id = int(org) if org else None
+
+        data = reporting_aggregate(start=start_d, end=end_d, organization_id=org_id)
+        return Response(data, status=status.HTTP_200_OK)

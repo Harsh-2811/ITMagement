@@ -33,7 +33,7 @@ class IsMainPartnerOrAdmin(permissions.BasePermission):
 class PartnerInviteView(generics.CreateAPIView):
     serializer_class = PartnerInvitationSerializer
     permission_classes = [permissions.IsAuthenticated, IsMainPartnerOrAdmin]
-
+    
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         if serializer.is_valid():

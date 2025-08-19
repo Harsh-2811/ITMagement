@@ -3,7 +3,7 @@ from rest_framework import serializers
 from decimal import Decimal
 from .models import (
     Invoice, InvoiceItem, Payment, RevenueCategory,
-    OrgPartnerShare, InvoicePartnerShare, PartnerAllocation, InvoiceAuditLog
+    OrgPartnerShare, InvoicePartnerShare, PartnerAllocation, InvoiceAuditLog , TaxRecord , TaxRule
 )
 
 
@@ -42,26 +42,54 @@ class InvoiceSerializer(serializers.ModelSerializer):
     class Meta:
         model = Invoice
         fields = [
-            "id", "invoice_number", "owner", "organization", "client_name", "client_email", "client_country", "client_state",
+            "id", "invoice_number",
+              "owner", 
+            "organization",
+            "client_name", "client_email", "client_country", "client_state",
             "due_date", "status", "currency", "exchange_rate",
             "subtotal_amount", "tax_amount", "total_amount", "paid_amount",
             "created_at", "updated_at", "sent_at", "paid_at",
             "items", "payments", "pdf_file", "audit_logs",
         ]
         read_only_fields = [
-            "id", "invoice_number", "status", "subtotal_amount", "tax_amount", "total_amount",
-            "paid_amount", "created_at", "updated_at", "sent_at", "paid_at", "pdf_file", "owner", "organization"
+            "id", "invoice_number", "status", "subtotal_amount",
+            "tax_amount", "total_amount", "paid_amount",
+            "created_at", "updated_at", "sent_at", "paid_at",
+            "pdf_file",
+              "owner", 
+            "organization",
         ]
 
-    def create(self, validated_data):
-        request = self.context.get("request", None)
-        items = validated_data.pop("items", [])
-        owner = getattr(request, "user", None)
-        org = getattr(owner, "organization", None) if owner else validated_data.get("organization")
+    # def create(self, validated_data):
+    #     items = validated_data.pop("items", [])
+    #     # owner and organization come from serializer.save(...)
+    #     invoice = Invoice.objects.create(**validated_data)
 
+    #     for it in items:
+    #         InvoiceItem.objects.create(invoice=invoice, **it)
+
+    #     invoice.recalc_totals()
+    #     return invoice
+
+
+    def create(self, validated_data):
+        request = self.context.get("request")
+        items = validated_data.pop("items", [])
+
+        # These will come from serializer.save() in the view
+        owner = validated_data.pop("owner", None)
+        org = validated_data.pop("organization", None)
+
+        if not owner or not org:
+            raise serializers.ValidationError("Owner or organization not provided.")
+
+        # Create invoice
         invoice = Invoice.objects.create(owner=owner, organization=org, **validated_data)
+
+        # Create invoice items
         for it in items:
             InvoiceItem.objects.create(invoice=invoice, **it)
+
         invoice.recalc_totals()
         return invoice
 
@@ -117,3 +145,38 @@ class PartnerAllocationSerializer(serializers.ModelSerializer):
 
     def get_partner_display(self, obj):
         return getattr(obj.partner.user, "username", str(obj.partner_id))
+
+
+class TaxRuleSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = TaxRule
+        fields = "__all__"
+        read_only_fields = ["created_at", "updated_at"]
+
+    def validate(self, data):
+        rate = data.get("rate_percentage", 0)
+        comps = data.get("components")
+
+        if rate is not None and rate < 0:
+            raise serializers.ValidationError("rate_percentage must be >= 0")
+
+        if comps:
+            total = Decimal("0.00")
+            for k, v in comps.items():
+                val = Decimal(str(v))
+                if val < 0:
+                    raise serializers.ValidationError(f"Component {k} must be >= 0")
+                total += val
+            # enforce strict match (optional business rule)
+            if rate and total != rate:
+                raise serializers.ValidationError("Sum of components must equal rate_percentage")
+
+        return data
+
+
+
+class TaxRecordSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = TaxRecord
+        fields = "__all__"
+        read_only_fields = ["created_at", "updated_at", "invoice"]

@@ -40,4 +40,5 @@ urlpatterns = [
     path('api/sprints/', include('api.sprints.urls')),
     path('api/dailytask/', include('api.dailytask.urls')),
     path('api/progresstracking/', include('api.progresstracking.urls')),
+    path('api/income/', include('api.income.urls')),
 ]  
