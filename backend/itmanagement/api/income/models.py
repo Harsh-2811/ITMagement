@@ -1,4 +1,3 @@
-# invoices/models.py
 import uuid
 from decimal import Decimal
 from django.db import models, transaction
@@ -8,8 +7,9 @@ from django.conf import settings
 from django.db.models import Max
 from api.partners.models import Partner  
 from api.organizations.models import Organization
+from api.financial_analytics.models import FinancialPeriod
 from django.core.exceptions import ValidationError
-
+from api.financial_analytics.models import CostCenter
 AUTH_USER_MODEL = settings.AUTH_USER_MODEL
 
 
@@ -47,6 +47,8 @@ class Invoice(models.Model):
     paid_at = models.DateTimeField(null=True, blank=True)
 
     pdf_file = models.FileField(upload_to="invoices/", blank=True, null=True)
+    cost_center = models.ForeignKey(CostCenter, on_delete=models.SET_NULL, null=True, blank=True)
+    period = models.ForeignKey(FinancialPeriod, on_delete=models.CASCADE, related_name="invoices", null=True, blank=True)
 
     class Meta:
         ordering = ["-created_at"]
@@ -225,7 +227,7 @@ class OrgPartnerShare(models.Model):
     SHARE_TYPE_CHOICES = (("percentage", "Percentage"), ("fixed", "FixedAmount"))
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name="partner_shares")
+    organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name="org_partner_shares")
     partner = models.ForeignKey(Partner, on_delete=models.CASCADE, related_name="org_shares")
     share_type = models.CharField(max_length=20, choices=SHARE_TYPE_CHOICES, default="percentage")
     share_value = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
@@ -256,6 +258,32 @@ class InvoicePartnerShare(models.Model):
     def __str__(self):
         return f"Invoice {self.invoice.invoice_number} - {self.partner.user.username} ({self.share_type} {self.share_value})"
 
+class PartnerIncomeShare(models.Model):
+    """
+    Tracks how much income each partner receives from a paid invoice.
+    Allocation can be percentage-based or fixed amount.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    partner = models.ForeignKey(AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="income_shares")
+    invoice = models.ForeignKey(Invoice, on_delete=models.CASCADE, related_name="income_partner_shares")
+    amount = models.DecimalField(max_digits=14, decimal_places=2, default=Decimal("0.00"))
+    percentage = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal("0.00"))
+    recorded_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ("partner", "invoice")
+        ordering = ["invoice", "-amount"]
+
+    def __str__(self):
+        return f"{self.partner.username} - {self.invoice.id} | {self.amount:.2f}"
+
+    def save(self, *args, **kwargs):
+        """
+        Ensure amount matches invoice total * percentage if percentage > 0.
+        """
+        if self.percentage > 0:
+            self.amount = (self.invoice.total_amount * self.percentage / Decimal("100")).quantize(TWOPLACES)
+        super().save(*args, **kwargs)
 
 class PartnerAllocation(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
