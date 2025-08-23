@@ -3,13 +3,35 @@ from rest_framework.response import Response
 from django.contrib.auth.hashers import make_password
 from django.utils.crypto import get_random_string
 from django.core.mail import send_mail
-
+from django_filters.rest_framework import DjangoFilterBackend
+from rest_framework.filters import OrderingFilter
 from api.users.models import User
 from api.organizations.models import Organization
 from api.partners.models import Partner
 from .models import Employee
 from .serializers import EmployeeInviteSerializer, EmployeeDetailSerializer
+from datetime import datetime
+from rest_framework import generics, permissions, status
+from rest_framework.response import Response
+from rest_framework.parsers import MultiPartParser, FormParser
+from django.shortcuts import get_object_or_404
 
+from .models import (
+    Department, JobRole, Employee, EmployeeContract, EmployeeDocument,
+    Skill, EmployeeSkill, Certification, PerformanceCycle, PerformanceGoal, PerformanceEvaluation,
+    AttendanceRecord, LeaveType, LeaveBalance, LeaveRequest,
+    OvertimeRecord, PayrollConfig, PayrollRun, Payslip , ResourceAssignment, ProjectSkillRequirement, ResourceForecast, UtilizationRecord
+)
+from .serializers import (
+    DepartmentSerializer, JobRoleSerializer, EmployeeSerializer, EmployeeContractSerializer, EmployeeDocumentSerializer,
+    SkillSerializer, EmployeeSkillSerializer, CertificationSerializer, PerformanceCycleSerializer, PerformanceGoalSerializer,
+    PerformanceEvaluationSerializer, AttendanceRecordSerializer, LeaveTypeSerializer, LeaveBalanceSerializer, LeaveRequestSerializer,
+    OvertimeRecordSerializer, PayrollConfigSerializer, PayrollRunSerializer, PayslipSerializer , ResourceAssignmentSerializer, ProjectSkillRequirementSerializer,
+    ResourceForecastSerializer, UtilizationRecordSerializer
+)
+from .utils import approve_leave, reject_leave, accrue_monthly_leave, generate_payroll_run , compute_utilization, utilization_band, recommend_employees, project_time_split, forecast_gaps
+
+from rest_framework.views import APIView
 class IsMainPartnerOrAdmin(permissions.BasePermission):
     def has_permission(self, request, view):
         if request.user.is_superuser:
@@ -82,3 +104,494 @@ Thanks,
             }, status=status.HTTP_201_CREATED)
 
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+
+
+# --- Catalog ---
+class DepartmentListCreateView(generics.ListCreateAPIView):
+    queryset = Department.objects.all()
+    serializer_class = DepartmentSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+class DepartmentDetailView(generics.RetrieveUpdateDestroyAPIView):
+    queryset = Department.objects.all()
+    serializer_class = DepartmentSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+class JobRoleListCreateView(generics.ListCreateAPIView):
+    queryset = JobRole.objects.all()
+    serializer_class = JobRoleSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+class JobRoleDetailView(generics.RetrieveUpdateDestroyAPIView):
+    queryset = JobRole.objects.all()
+    serializer_class = JobRoleSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+
+# --- Employee & docs ---
+class EmployeeListCreateView(generics.ListCreateAPIView):
+    queryset = Employee.objects.select_related("user", "department", "job_role")
+    serializer_class = EmployeeSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+class EmployeeDetailView(generics.RetrieveUpdateDestroyAPIView):
+    queryset = Employee.objects.select_related("user", "department", "job_role")
+    serializer_class = EmployeeSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+
+class EmployeeContractListCreateView(generics.ListCreateAPIView):
+    queryset = EmployeeContract.objects.select_related("employee")
+    serializer_class = EmployeeContractSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
+
+class EmployeeContractDetailView(generics.RetrieveUpdateDestroyAPIView):
+    queryset = EmployeeContract.objects.select_related("employee")
+    serializer_class = EmployeeContractSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
+
+
+class EmployeeDocumentListCreateView(generics.ListCreateAPIView):
+    queryset = EmployeeDocument.objects.select_related("employee")
+    serializer_class = EmployeeDocumentSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
+
+class EmployeeDocumentDetailView(generics.RetrieveUpdateDestroyAPIView):
+    queryset = EmployeeDocument.objects.select_related("employee")
+    serializer_class = EmployeeDocumentSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
+
+
+# --- Skills & certs ---
+class SkillListCreateView(generics.ListCreateAPIView):
+    queryset = Skill.objects.all()
+    serializer_class = SkillSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+class SkillDetailView(generics.RetrieveUpdateDestroyAPIView):
+    queryset = Skill.objects.all()
+    serializer_class = SkillSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+
+class EmployeeSkillListCreateView(generics.ListCreateAPIView):
+    queryset = EmployeeSkill.objects.select_related("employee", "skill")
+    serializer_class = EmployeeSkillSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+class EmployeeSkillDetailView(generics.RetrieveUpdateDestroyAPIView):
+    queryset = EmployeeSkill.objects.select_related("employee", "skill")
+    serializer_class = EmployeeSkillSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+
+class CertificationListCreateView(generics.ListCreateAPIView):
+    queryset = Certification.objects.select_related("employee")
+    serializer_class = CertificationSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
+
+class CertificationDetailView(generics.RetrieveUpdateDestroyAPIView):
+    queryset = Certification.objects.select_related("employee")
+    serializer_class = CertificationSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
+
+
+# --- Performance ---
+class PerformanceCycleListCreateView(generics.ListCreateAPIView):
+    queryset = PerformanceCycle.objects.all()
+    serializer_class = PerformanceCycleSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+class PerformanceCycleDetailView(generics.RetrieveUpdateDestroyAPIView):
+    queryset = PerformanceCycle.objects.all()
+    serializer_class = PerformanceCycleSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+
+class PerformanceGoalListCreateView(generics.ListCreateAPIView):
+    queryset = PerformanceGoal.objects.select_related("employee", "cycle")
+    serializer_class = PerformanceGoalSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+class PerformanceGoalDetailView(generics.RetrieveUpdateDestroyAPIView):
+    queryset = PerformanceGoal.objects.select_related("employee", "cycle")
+    serializer_class = PerformanceGoalSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+
+class PerformanceEvaluationListCreateView(generics.ListCreateAPIView):
+    serializer_class = PerformanceEvaluationSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        if user.is_staff:  # HR/Admin can see all evaluations
+            return PerformanceEvaluation.objects.all()
+        return PerformanceEvaluation.objects.filter(employee=user)
+
+    def perform_create(self, serializer):
+        serializer.save(employee=self.request.user)
+
+class SubmitForReviewView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, pk):
+        try:
+            evaluation = PerformanceEvaluation.objects.get(pk=pk)
+        except PerformanceEvaluation.DoesNotExist:
+            return Response({"detail": "Not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        if evaluation.employee != request.user:
+            return Response({"detail": "Not allowed"}, status=status.HTTP_403_FORBIDDEN)
+
+        evaluation.status = "submitted"
+        evaluation.save()
+        return Response({"status": "submitted"}, status=status.HTTP_200_OK)
+
+class AddFeedbackView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, pk):
+        try:
+            evaluation = PerformanceEvaluation.objects.get(pk=pk)
+        except PerformanceEvaluation.DoesNotExist:
+            return Response({"detail": "Not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        if not request.user.is_staff and evaluation.evaluator != request.user:
+            return Response({"detail": "Not allowed"}, status=status.HTTP_403_FORBIDDEN)
+
+        evaluation.feedback = request.data.get("feedback", evaluation.feedback)
+        evaluation.improvement_notes = request.data.get("improvement_notes", evaluation.improvement_notes)
+        evaluation.rating = request.data.get("rating", evaluation.rating)
+        evaluation.status = "reviewed"
+        evaluation.save()
+
+        return Response(
+            {
+                "status": "reviewed",
+                "feedback": evaluation.feedback,
+                "rating": evaluation.rating,
+            },
+            status=status.HTTP_200_OK,
+        )
+class PerformanceEvaluationDetailView(generics.RetrieveUpdateDestroyAPIView):
+    serializer_class = PerformanceEvaluationSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    queryset = PerformanceEvaluation.objects.all()
+
+    def get_queryset(self):
+        user = self.request.user
+        if user.is_staff:
+            return PerformanceEvaluation.objects.all()
+        return PerformanceEvaluation.objects.filter(employee=user)
+
+
+# --- Attendance & Leave ---
+class AttendanceRecordListCreateView(generics.ListCreateAPIView):
+    queryset = AttendanceRecord.objects.select_related("employee")
+    serializer_class = AttendanceRecordSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+class AttendanceRecordDetailView(generics.RetrieveUpdateDestroyAPIView):
+    queryset = AttendanceRecord.objects.select_related("employee")
+    serializer_class = AttendanceRecordSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+
+class LeaveTypeListCreateView(generics.ListCreateAPIView):
+    queryset = LeaveType.objects.all()
+    serializer_class = LeaveTypeSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+class LeaveTypeDetailView(generics.RetrieveUpdateDestroyAPIView):
+    queryset = LeaveType.objects.all()
+    serializer_class = LeaveTypeSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+
+class LeaveBalanceListView(generics.ListAPIView):
+    serializer_class = LeaveBalanceSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    def get_queryset(self):
+        emp_id = self.request.query_params.get("employee")
+        qs = LeaveBalance.objects.all()
+        if emp_id:
+            qs = qs.filter(employee_id=emp_id)
+        return qs
+
+
+class LeaveRequestListCreateView(generics.ListCreateAPIView):
+    queryset = LeaveRequest.objects.select_related("employee", "leave_type", "manager")
+    serializer_class = LeaveRequestSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+class LeaveRequestDetailView(generics.RetrieveUpdateDestroyAPIView):
+    queryset = LeaveRequest.objects.select_related("employee", "leave_type", "manager")
+    serializer_class = LeaveRequestSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+
+class LeaveRequestApproveView(generics.UpdateAPIView):
+    queryset = LeaveRequest.objects.all()
+    serializer_class = LeaveRequestSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def patch(self, request, *args, **kwargs):
+        lr = self.get_object()
+        approve_leave(lr, manager_user=request.user)
+        return Response({"detail": "Approved"}, status=status.HTTP_200_OK)
+
+
+class LeaveRequestRejectView(generics.UpdateAPIView):
+    queryset = LeaveRequest.objects.all()
+    serializer_class = LeaveRequestSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def patch(self, request, *args, **kwargs):
+        lr = self.get_object()
+        reject_leave(lr, manager_user=request.user)
+        return Response({"detail": "Rejected"}, status=status.HTTP_200_OK)
+
+
+# --- Payroll ---
+class OvertimeRecordListCreateView(generics.ListCreateAPIView):
+    queryset = OvertimeRecord.objects.select_related("employee")
+    serializer_class = OvertimeRecordSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+class OvertimeRecordDetailView(generics.RetrieveUpdateDestroyAPIView):
+    queryset = OvertimeRecord.objects.select_related("employee")
+    serializer_class = OvertimeRecordSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+
+class PayrollConfigListCreateView(generics.ListCreateAPIView):
+    queryset = PayrollConfig.objects.all()
+    serializer_class = PayrollConfigSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+class PayrollConfigDetailView(generics.RetrieveUpdateDestroyAPIView):
+    queryset = PayrollConfig.objects.all()
+    serializer_class = PayrollConfigSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+
+class PayrollRunListCreateView(generics.ListCreateAPIView):
+    queryset = PayrollRun.objects.all()
+    serializer_class = PayrollRunSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+class PayrollRunDetailView(generics.RetrieveUpdateDestroyAPIView):
+    queryset = PayrollRun.objects.all()
+    serializer_class = PayrollRunSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+
+class GeneratePayrollRunView(generics.GenericAPIView):
+    serializer_class = PayrollRunSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        ps = request.data.get("period_start")
+        pe = request.data.get("period_end")
+        period_start = datetime.strptime(ps, "%Y-%m-%d").date()
+        period_end = datetime.strptime(pe, "%Y-%m-%d").date()
+        run = generate_payroll_run(period_start, period_end, processed_by=request.user)
+        return Response(PayrollRunSerializer(run).data, status=status.HTTP_201_CREATED)
+
+
+class PayslipListView(generics.ListAPIView):
+    queryset = Payslip.objects.select_related("employee", "payroll_run")
+    serializer_class = PayslipSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+class PayslipDetailView(generics.RetrieveAPIView):
+    queryset = Payslip.objects.select_related("employee", "payroll_run")
+    serializer_class = PayslipSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+
+
+class ResourceAssignmentListCreateView(generics.ListCreateAPIView):
+    queryset = ResourceAssignment.objects.select_related("employee__user", "project", "role")
+    serializer_class = ResourceAssignmentSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    filter_backends = [DjangoFilterBackend, OrderingFilter]
+    filterset_fields = ["employee", "project", "role", "is_primary"]
+    ordering_fields = ["start_date", "end_date", "created_at"]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        # active=1 => only overlapping today; add ?active=1
+        active = self.request.query_params.get("active")
+        if active:
+            today = date.today()
+            qs = qs.filter(start_date__lte=today, end_date__gte=today)
+        # window filtering: ?from=YYYY-MM-DD&to=YYYY-MM-DD
+        s = self.request.query_params.get("from"); e = self.request.query_params.get("to")
+        if s and e:
+            S = datetime.strptime(s, "%Y-%m-%d").date()
+            E = datetime.strptime(e, "%Y-%m-%d").date()
+            qs = qs.filter(start_date__lte=E, end_date__gte=S)
+        return qs
+
+
+class ResourceAssignmentDetailView(generics.RetrieveUpdateDestroyAPIView):
+    queryset = ResourceAssignment.objects.select_related("employee__user", "project", "role")
+    serializer_class = ResourceAssignmentSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+
+class ProjectSkillRequirementListCreateView(generics.ListCreateAPIView):
+    queryset = ProjectSkillRequirement.objects.select_related("project", "skill")
+    serializer_class = ProjectSkillRequirementSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+
+class ProjectSkillRequirementDetailView(generics.RetrieveUpdateDestroyAPIView):
+    queryset = ProjectSkillRequirement.objects.select_related("project", "skill")
+    serializer_class = ProjectSkillRequirementSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+
+class ResourceForecastListCreateView(generics.ListCreateAPIView):
+    queryset = ResourceForecast.objects.select_related("project")
+    serializer_class = ResourceForecastSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+
+class ResourceForecastDetailView(generics.RetrieveUpdateDestroyAPIView):
+    queryset = ResourceForecast.objects.select_related("project")
+    serializer_class = ResourceForecastSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+
+# --- Analytics / Actions ---
+
+# views.py
+class UtilizationReportView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        s = request.query_params.get("start")
+        e = request.query_params.get("end")
+        if not s or not e:
+            return Response({"detail": "start and end are required (YYYY-MM-DD)."}, status=400)
+        try:
+            start = datetime.strptime(s, "%Y-%m-%d").date()
+            end = datetime.strptime(e, "%Y-%m-%d").date()
+        except ValueError:
+            return Response({"detail": "Invalid date format, use YYYY-MM-DD."}, status=400)
+        if end < start:
+            return Response({"detail": "end must be >= start."}, status=400)
+
+        employee_id = request.query_params.get("employee")
+        project_id = request.query_params.get("project")
+
+        if employee_id:
+            m = compute_utilization(employee_id, start, end, project_id=project_id)
+            return Response({
+                "employee_id": str(employee_id),
+                "hours": float(m["hours"]),
+                "capacity": float(m["capacity"]),
+                "util_percent": float(m["util_percent"])
+            })
+        else:
+            band = utilization_band(Employee.objects.all(), start, end)
+            return Response(band)
+
+
+class RecommendationView(APIView):
+    """
+    POST:
+    {
+      "project": "<uuid|int>",
+      "start": "YYYY-MM-DD",
+      "end": "YYYY-MM-DD",
+      "requirements": [{"skill_id": "<uuid>", "min_level": 3}, ...],
+      "limit": 10,
+
+      // Optional (new):
+      "weights": {
+        "skill_coverage": 0.45,
+        "skill_level_fit": 0.25,
+        "free_capacity": 0.20,
+        "utilization": 0.10
+      },
+      "desired_hours_per_week": 20,        // float/decimal
+      "exclude_heavily_booked": true,      // bool
+      "heavy_booking_threshold_percent": 90 // 0..100
+    }
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        from decimal import Decimal
+        project_id = request.data["project"]
+        start = datetime.strptime(request.data["start"], "%Y-%m-%d").date()
+        end = datetime.strptime(request.data["end"], "%Y-%m-%d").date()
+        reqs = request.data.get("requirements", [])
+        limit = int(request.data.get("limit", 10))
+
+        weights = request.data.get("weights")
+        desired = request.data.get("desired_hours_per_week")
+        if desired is not None:
+            try:
+                desired = Decimal(str(desired))
+            except Exception:
+                desired = None
+
+        exclude_heavy = bool(request.data.get("exclude_heavily_booked", False))
+        heavy_thresh = request.data.get("heavy_booking_threshold_percent", 90)
+        try:
+            heavy_thresh = Decimal(str(heavy_thresh))
+        except Exception:
+            heavy_thresh = Decimal("90")
+
+        data = recommend_employees(
+            project_id,
+            reqs,
+            start,
+            end,
+            limit=limit,
+            weights=weights,
+            desired_hours_per_week=desired,
+            exclude_heavily_booked=exclude_heavy,
+            heavy_booking_threshold_percent=heavy_thresh,
+        )
+        return Response(data)
+
+
+
+class CrossProjectSplitView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        employee_id = request.query_params.get("employee")
+        s = request.query_params.get("start")
+        e = request.query_params.get("end")
+        start = datetime.strptime(s, "%Y-%m-%d").date()
+        end = datetime.strptime(e, "%Y-%m-%d").date()
+        data = project_time_split(employee_id, start, end)
+        return Response(data)
+
+
+class CapacityPlanningView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        project_id = request.query_params.get("project")
+        s = request.query_params.get("start")
+        e = request.query_params.get("end")
+        start = datetime.strptime(s, "%Y-%m-%d").date()
+        end = datetime.strptime(e, "%Y-%m-%d").date()
+        data = forecast_gaps(project_id, start, end)
+        return Response(data)

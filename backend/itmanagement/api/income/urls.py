@@ -1,14 +1,6 @@
 # invoices/urls.py
 from django.urls import path
-from .views import (
-    InvoiceListCreateView, InvoiceDetailView, InvoiceSendView, InvoiceMarkPaidView,
-    InvoiceCheckOverdueView, InvoicePDFView, RecordPaymentView,
-    RevenueCategoryListCreateView, RevenueCategoryDetailView,
-    OrgPartnerShareListCreateView, OrgPartnerShareDetailView,
-    InvoicePartnerShareListCreateView, InvoicePartnerShareDetailView,
-    PartnerAllocationListView,InvoicePDFView , ApplyTaxToInvoiceView, TaxRuleListCreateView,
-    TaxRuleDetailView , TaxRecordListView , FinancialReportView
-) 
+from .views import *
 
 urlpatterns = [
     path("invoices/", InvoiceListCreateView.as_view(), name="invoice-list-create"),

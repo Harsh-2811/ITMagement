@@ -1,10 +1,5 @@
 from django.urls import path
-from .views import (
-    FinancialPeriodListCreateView, FinancialPeriodDetailView,
-    ProfitLossReportGenerateView, CashFlowReportGenerateView,
-    PartnerFinancialBreakdownGenerateView, TaxReportGenerateView,
-    ForecastReportView, CostCenterAnalysisView , CostCenterAnalysisCreateView
-)
+from .views import *
 
 urlpatterns = [
     path("periods/", FinancialPeriodListCreateView.as_view(), name="financial-period-list-create"),

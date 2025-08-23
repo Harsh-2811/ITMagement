@@ -20,7 +20,7 @@ from .utils import (
 
 class FinancialPeriodListCreateView(generics.ListCreateAPIView):
     queryset = FinancialPeriod.objects.all()
-    serializer_class = FinancialPeriodSerializer
+    serializer_class = FinancialPeriodSerializer    
     permission_classes = [permissions.IsAuthenticated]
 
 
