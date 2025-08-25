@@ -1,7 +1,7 @@
 from decimal import Decimal
 from django.db.models import Sum
 from django.core.exceptions import ValidationError
-from .models import Expense, ExpenseBudget, PartnerExpenseAllocation, ExpenseReport, ExpenseAuditLog, TWOPLACES
+from .models import *
 from django.contrib.auth import get_user_model
 from django.core.mail import send_mail
 

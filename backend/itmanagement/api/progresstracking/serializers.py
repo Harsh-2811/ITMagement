@@ -9,7 +9,6 @@ from .models import ProgressUpdate, ProgressReport
 class DailyTaskMinimalSerializer(serializers.ModelSerializer):
     class Meta:
         model = DailyTask
-        # include fields that are useful in progress endpoints (adjust as needed)
         fields = [
             "id", "title", "description", "assigned_to", "due_date",
             "priority", "category", "status", "sprint", "project_id"
@@ -31,7 +30,6 @@ class ProgressUpdateSerializer(serializers.ModelSerializer):
         read_only_fields = ["updated_by", "timestamp"]
 
     def validate(self, data):
-        # Ensure at least one of task or milestone is set
         if not data.get("task") and not data.get("milestone"):
             raise serializers.ValidationError("Either task or milestone must be set.")
         return data

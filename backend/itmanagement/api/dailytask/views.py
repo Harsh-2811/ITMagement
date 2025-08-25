@@ -1,16 +1,10 @@
 from rest_framework import generics, permissions
 from rest_framework.exceptions import PermissionDenied, ValidationError
-from .models import DailyTask, TaskDependency, TaskTimeLog, StandupReport
-from .serializers import (
-    DailyTaskSerializer,
-    TaskDependencySerializer,
-    TaskTimeLogSerializer,
-    StandupReportSerializer
-)
-from .permissions import IsTaskAssignee, IsTaskOwner, IsOwner  # ← Added IsOwner
+from .models import *
+from .serializers import *
+from .permissions import IsTaskAssignee, IsTaskOwner, IsOwner  
 from django.db import IntegrityError
 
-# Daily Task Views 
 
 class DailyTaskListCreateView(generics.ListCreateAPIView):
     serializer_class = DailyTaskSerializer
@@ -49,7 +43,6 @@ class DailyTaskDetailUpdateDeleteView(generics.RetrieveUpdateDestroyAPIView):
         return DailyTask.objects.filter(assigned_to=self.request.user)
 
 
-# Task Dependency Views 
 
 class TaskDependencyListCreateView(generics.ListCreateAPIView):
     serializer_class = TaskDependencySerializer
@@ -82,7 +75,6 @@ class TaskDependencyDetailUpdateDeleteView(generics.RetrieveUpdateDestroyAPIView
         return TaskDependency.objects.filter(task__assigned_to=self.request.user)
 
 
-# Task Time Log Views
 
 class TaskTimeLogListCreateView(generics.ListCreateAPIView):
     serializer_class = TaskTimeLogSerializer
@@ -103,7 +95,6 @@ class TaskTimeLogDetailUpdateDeleteView(generics.RetrieveUpdateDestroyAPIView):
         return TaskTimeLog.objects.filter(user=self.request.user)
 
 
-# Standup Report Views
 class StandupReportListCreateView(generics.ListCreateAPIView):
     serializer_class = StandupReportSerializer
     permission_classes = [permissions.IsAuthenticated]

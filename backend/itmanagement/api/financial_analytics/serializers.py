@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import ProfitLossReport, CashFlowReport, PartnerFinancialBreakdown, TaxReport, FinancialPeriod, CostCenter , ForecastReport
+from .models import *
 
 class FinancialPeriodSerializer(serializers.ModelSerializer):
     class Meta:

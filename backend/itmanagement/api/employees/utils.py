@@ -1,41 +1,34 @@
-# hr/utils.py
+
 from decimal import Decimal, ROUND_HALF_UP
 from datetime import date, timedelta
 from django.db import transaction
 from django.db.models import Sum, Q , F
-from .models import (
-    Employee, EmployeeContract, Certification, AttendanceRecord, LeaveType, LeaveBalance, LeaveRequest,
-    PayrollConfig, PayrollRun, Payslip, OvertimeRecord , ResourceAssignment, ProjectSkillRequirement, ResourceForecast , ResourceAssignment , EmployeeSkill
-)
+from .models import *
 from api.dailytask.models import TaskTimeLog, DailyTask
 
-
 TWOPLACES = Decimal("0.01")
-
 
 def q2(v) -> Decimal:
     return (v if isinstance(v, Decimal) else Decimal(str(v))).quantize(TWOPLACES, rounding=ROUND_HALF_UP)
 
 
-# -------- Leave Accruals / Balances ----------
 def accrue_monthly_leave(employee: Employee, as_of: date | None = None):
     """Accrue leave for all leave types for one month."""
     as_of = as_of or date.today()
     for lt in LeaveType.objects.all():
         lb, _ = LeaveBalance.objects.get_or_create(employee=employee, leave_type=lt)
-        new_balance = lb.balance + lt.accrual_per_month
-        # carry forward limit is enforced at financial-year-end externally if needed
-        lb.balance = new_balance.quantize(TWOPLACES)
+        lb.balance = q2(lb.balance + lt.accrual_per_month)
         lb.save(update_fields=["balance", "updated_at"])
 
 
+@transaction.atomic
 def approve_leave(request_obj: LeaveRequest, manager_user):
     """Approve leave and deduct balance."""
     days = request_obj.duration_days()
     lb = LeaveBalance.objects.select_for_update().get(employee=request_obj.employee, leave_type=request_obj.leave_type)
     if lb.balance < days:
         raise ValueError("Insufficient leave balance")
-    lb.balance = (lb.balance - days).quantize(TWOPLACES)
+    lb.balance = q2(lb.balance - days)
     lb.save(update_fields=["balance", "updated_at"])
     request_obj.status = LeaveRequest.Status.APPROVED
     request_obj.manager = manager_user
@@ -48,7 +41,6 @@ def reject_leave(request_obj: LeaveRequest, manager_user):
     request_obj.save(update_fields=["status", "manager", "decided_at"])
 
 
-# -------- Contract/Cert expiry helpers ----------
 def contracts_expiring_within(days=30):
     cutoff = date.today() + timedelta(days=days)
     return EmployeeContract.objects.filter(end_date__lte=cutoff, status=EmployeeContract.Status.ACTIVE)
@@ -58,17 +50,16 @@ def certifications_expiring_within(days=30):
     return Certification.objects.filter(expiry_date__isnull=False, expiry_date__lte=cutoff)
 
 
-# -------- Payroll calculations ----------
+
 @transaction.atomic
 def generate_payslip_for_employee(run: PayrollRun, employee: Employee):
-    cfg = PayrollConfig.objects.first()  # per-org config; adjust if multi-org
+    cfg = PayrollConfig.objects.first()  
     base = q2(employee.base_salary)
 
-    # Structure
+
     basic = q2(base * cfg.basic_percent / Decimal("100"))
     hra = q2(base * cfg.hra_percent / Decimal("100"))
 
-    # Overtime
     ot_hours = OvertimeRecord.objects.filter(
         employee=employee, date__gte=run.period_start, date__lte=run.period_end
     ).aggregate(total=Sum("hours"))["total"] or Decimal("0.00")
@@ -78,7 +69,7 @@ def generate_payslip_for_employee(run: PayrollRun, employee: Employee):
 
     pf_emp = q2(basic * cfg.pf_employee_percent / Decimal("100"))
     esi_emp = q2(gross * cfg.esi_employee_percent / Decimal("100"))
-    income_tax = q2(gross * cfg.income_tax_percent / Decimal("100"))  # Simplified
+    income_tax = q2(gross * cfg.income_tax_percent / Decimal("100")) 
 
     deductions = q2(pf_emp + esi_emp + income_tax)
     net = q2(gross - deductions)
@@ -116,7 +107,7 @@ def generate_payroll_run(period_start, period_end, processed_by):
 
 
 
-def q2(x):  # quantize helper
+def q2(x):  
     return (x if isinstance(x, Decimal) else Decimal(str(x))).quantize(TWOPLACES, rounding=ROUND_HALF_UP)
 
 
@@ -155,13 +146,12 @@ def weekly_capacity_hours(
     emp = Employee.objects.get(id=employee_id)
     total = Decimal("0.00")
 
-    # Contract hours (for leave deduction); fallback to base_week_hours
     contract_week_hours = getattr(
         EmployeeContract.objects.filter(employee=emp, status=EmployeeContract.Status.ACTIVE).order_by("-start_date").first(),
         "weekly_hours",
     ) or base_week_hours
 
-    # leave hours
+
     leave_days = 0
     approved = LeaveRequest.objects.filter(
         employee=emp, status=LeaveRequest.Status.APPROVED,
@@ -179,19 +169,15 @@ def weekly_capacity_hours(
         assignments = assignments.filter(project_id=project_id)
 
     for wk_start, wk_end in daterange_weeks(start, end):
-        # fraction of the week inside the requested window (handles partial weeks)
         overlap_start = max(wk_start, start); overlap_end = min(wk_end, end)
         days = (overlap_end - overlap_start).days + 1
         frac = Decimal(days) / Decimal("7")
 
         if use_planned:
-            # Sum per-assignment planned hours * allocation% (cap combined allocation at 100)
             qs = assignments.filter(start_date__lte=wk_end, end_date__gte=wk_start)
-            # cap by allocation, but use planned hours as the base unit
             alloc = qs.aggregate(p=Sum("allocation_percent"))["p"] or Decimal("0")
             alloc = min(alloc, Decimal("100"))
             planned_sum = qs.aggregate(h=Sum("planned_hours_per_week"))["h"] or Decimal("0")
-            # Scale the *average* planned hours by allocation density; if planned varies, this is an approximation
             week_cap = (Decimal(planned_sum) * (alloc / Decimal("100"))) * frac
         else:
             alloc = assignments.filter(start_date__lte=wk_end, end_date__gte=wk_start)\
@@ -267,10 +253,10 @@ def recommend_employees(
 
     requirements = [{"skill_id": "<uuid>", "min_level": 3}, ...]
     weights = {
-      "skill_coverage": 0.45,   # how many of the required skills the person has
-      "skill_level_fit": 0.25,  # how well their levels meet/exceed min levels
-      "free_capacity": 0.20,    # more free capacity -> higher score
-      "utilization": 0.10,      # lower utilization -> higher score (we invert)
+      "skill_coverage": 0.45,   
+      "skill_level_fit": 0.25,  
+      "free_capacity": 0.20,    
+      "utilization": 0.10,      
     }
     desired_hours_per_week: if not provided, inferred as 20.00
     exclude_heavily_booked: if True, filters out candidates whose avg overlapping allocation% >= threshold
@@ -284,10 +270,9 @@ def recommend_employees(
         "free_capacity": 0.20,
         "utilization": 0.10,
     }
-    # Normalize weights to sum 1.0
     w_total = sum(weights.values())
     if w_total <= 0:
-        weights = {k: (0 if k != "free_capacity" else 1.0) for k in weights}  # fallback: prefer capacity
+        weights = {k: (0 if k != "free_capacity" else 1.0) for k in weights} 
         w_total = 1.0
     norm_w = {k: float(v) / float(w_total) for k, v in weights.items()}
 
@@ -297,21 +282,17 @@ def recommend_employees(
     min_levels = {str(r["skill_id"]): int(r.get("min_level", 3)) for r in requirements}
     req_count = len(skill_ids)
 
-    # Preselect employees who have at least ONE of the required skills (partial match base set)
     base_ids = EmployeeSkill.objects.filter(skill_id__in=skill_ids) \
                                     .values_list("employee_id", flat=True).distinct()
 
     results = []
     for emp in Employee.objects.filter(id__in=base_ids).select_related("user"):
-        # Skill coverage + level fit
         skills = list(EmployeeSkill.objects.filter(employee=emp, skill_id__in=skill_ids))
         have = {str(s.skill_id): s for s in skills}
 
-        # coverage: fraction of required skills present (0..1)
         covered = sum(1 for sid in skill_ids if str(sid) in have)
         coverage = covered / req_count if req_count else 0.0
 
-        # level fit: average of min(1, level/min_level) over only the skills we DO have
         fit_parts = []
         for sid in skill_ids:
             sid_str = str(sid)
@@ -321,22 +302,18 @@ def recommend_employees(
                 fit_parts.append(min(1.0, lvl / min_req))
         level_fit = (sum(fit_parts) / len(fit_parts)) if fit_parts else 0.0
 
-        # Current utilization & capacity (actuals)
-        util = compute_utilization(emp.id, start, end)  # hours, capacity, util_percent
-        free_capacity = float(max(Decimal("0.00"), util["capacity"] - util["hours"]))  # hours within window
+        util = compute_utilization(emp.id, start, end) 
+        free_capacity = float(max(Decimal("0.00"), util["capacity"] - util["hours"])) 
         free_capacity_score = float(min(1.0, (free_capacity / float(desired_hours_per_week))) if desired_hours_per_week > 0 else 0.0)
 
-        # Utilization score: prefer lower utilization (invert and clamp to 0..1)
         util_percent = float(util["util_percent"])
         utilization_score = max(0.0, min(1.0, (100.0 - util_percent) / 100.0))
 
-        # Optionally exclude heavily booked people (based on planned allocations)
         if exclude_heavily_booked:
             avg_planned_pct = float(_current_assignment_load_percent(emp.id, start, end))
             if avg_planned_pct >= float(heavy_booking_threshold_percent):
                 continue
 
-        # Weighted total (0..1)
         total_score = (
             norm_w["skill_coverage"] * coverage +
             norm_w["skill_level_fit"] * level_fit +

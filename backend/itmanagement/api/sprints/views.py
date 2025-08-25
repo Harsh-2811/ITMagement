@@ -4,7 +4,6 @@ from .models import Sprint, Story, Retrospective
 from .serializers import SprintSerializer, StorySerializer, RetrospectiveSerializer
 from .permissions import IsProjectMemberOrReadOnly
 
-# Sprint Views 
 class SprintListCreateView(generics.ListCreateAPIView):
     serializer_class = SprintSerializer
     permission_classes = [permissions.IsAuthenticated]
@@ -21,7 +20,6 @@ class SprintDetailUpdateDeleteView(generics.RetrieveUpdateDestroyAPIView):
     permission_classes = [permissions.IsAuthenticated, IsProjectMemberOrReadOnly]
     queryset = Sprint.objects.all()
 
-# Story Views 
 class StoryListCreateView(generics.ListCreateAPIView):
     serializer_class = StorySerializer
     permission_classes = [permissions.IsAuthenticated]
@@ -42,7 +40,6 @@ class StoryDetailUpdateDeleteView(generics.RetrieveUpdateDestroyAPIView):
     permission_classes = [permissions.IsAuthenticated]
     queryset = Story.objects.all()
 
-# Retrospective Views 
 class RetrospectiveListCreateView(generics.ListCreateAPIView):
     serializer_class = RetrospectiveSerializer
     permission_classes = [permissions.IsAuthenticated]

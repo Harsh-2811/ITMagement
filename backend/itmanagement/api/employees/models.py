@@ -8,13 +8,12 @@ from django.contrib.auth import get_user_model
 
 from api.users.models import User
 from api.organizations.models import Organization
-from api.projects.models import Project  # adjust import path as needed
+from api.projects.models import Project  
 
 User = get_user_model()
 TWOPLACES = Decimal("0.01")
 
 
-# --------- Core org/job catalogs ----------
 class Department(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=120, unique=True)
@@ -35,7 +34,6 @@ class JobRole(models.Model):
         return f"{self.title} ({self.level or ''})"
 
 
-# --------- Employee Profile ----------
 class Employee(models.Model):
     PERMISSION_CHOICES = [
         ("all", "All Permissions"),
@@ -52,42 +50,43 @@ class Employee(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="employee_profile")
     organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name="employees")
-    permissions = models.CharField(max_length=30, choices=PERMISSION_CHOICES)
+    employee_code = models.CharField(max_length=30, unique=True)
+    name = models.CharField(max_length=100)
+    designation = models.CharField(max_length=100, blank=True, null=True)
+    department = models.ForeignKey("Department", on_delete=models.SET_NULL, null=True, related_name="employees")
+    job_role = models.ForeignKey("JobRole", on_delete=models.SET_NULL, null=True, related_name="employees")
+    manager = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="team_members")
+    date_of_joining = models.DateField()
+    date_of_exit = models.DateField(null=True, blank=True)
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.ACTIVE)
+    permissions = models.CharField(max_length=30, choices=PERMISSION_CHOICES, default="limited")
     is_active = models.BooleanField(default=True)
     invited_by = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL, related_name="invited_employees")
     invited_at = models.DateTimeField(auto_now_add=True)
     accepted_at = models.DateTimeField(null=True, blank=True)
-    employee_code = models.CharField(max_length=30, unique=True)
-    department = models.ForeignKey(Department, on_delete=models.SET_NULL, null=True, related_name="employees")
-    job_role = models.ForeignKey(JobRole, on_delete=models.SET_NULL, null=True, related_name="employees")
-    manager = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="team_members")
-
-    date_of_joining = models.DateField()
-    date_of_exit = models.DateField(null=True, blank=True)
-    status = models.CharField(max_length=20, choices=Status.choices, default=Status.ACTIVE)
-
     phone = models.CharField(max_length=20, blank=True)
     alt_phone = models.CharField(max_length=20, blank=True)
+    mobile = models.CharField(max_length=15, blank=True)
     address = models.TextField(blank=True)
     emergency_contact = models.JSONField(null=True, blank=True)
-
     base_salary = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
     currency = models.CharField(max_length=10, default="INR")
-
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
-    def promote(self, new_role: JobRole, new_salary: Decimal | None = None):
+    def get_full_name(self):
+        return self.name or self.user.get_full_name() or self.user.username
+
+    def promote(self, new_role: "JobRole", new_salary: Decimal | None = None):
         self.job_role = new_role
         if new_salary is not None:
-            self.base_salary = new_salary.quantize(TWOPLACES)
+            self.base_salary = Decimal(new_salary).quantize(Decimal("0.01"))
         self.save(update_fields=["job_role", "base_salary", "updated_at"])
 
     def __str__(self):
-        return f"{self.user.get_full_name()} - {self.job_role} @ {self.organization.name}"
+        return f"{self.get_full_name()} - {self.job_role} @ {self.organization.name}"
 
 
-# --------- Contracts & Documents ----------
 class EmployeeContract(models.Model):
     class Status(models.TextChoices):
         ACTIVE = "Active", "Active"
@@ -103,7 +102,7 @@ class EmployeeContract(models.Model):
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.ACTIVE)
     auto_renew = models.BooleanField(default=False)
     renewal_terms = models.JSONField(null=True, blank=True)
-
+    weekly_hours = models.PositiveIntegerField(default=40)
     uploaded_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -119,7 +118,7 @@ class EmployeeDocument(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     employee = models.ForeignKey(Employee, on_delete=models.CASCADE, related_name="documents")
     doc_type = models.CharField(max_length=100)
-    file = models.FileField(upload_to="hr/documents/")
+    file = models.FileField(upload_to="employee/documents/")
     uploaded_at = models.DateTimeField(auto_now_add=True)
     meta = models.JSONField(null=True, blank=True)
 
@@ -127,7 +126,6 @@ class EmployeeDocument(models.Model):
         return f"{self.doc_type} - {self.employee.employee_code}"
 
 
-# --------- Skills & Certifications ----------
 class Skill(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=120, unique=True)
@@ -139,8 +137,8 @@ class Skill(models.Model):
 
 class EmployeeSkill(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    employee = models.ForeignKey(Employee, on_delete=models.CASCADE, related_name="skills")
-    skill = models.ForeignKey(Skill, on_delete=models.CASCADE)
+    employee = models.ForeignKey(Employee, on_delete=models.CASCADE, related_name="employee_skills")
+    skill = models.ForeignKey(Skill, on_delete=models.CASCADE, related_name="employee_skills")
     level = models.PositiveSmallIntegerField(default=1)  # 1..5
     years = models.DecimalField(max_digits=4, decimal_places=1, default=Decimal("0.0"))
     updated_at = models.DateTimeField(auto_now=True)
@@ -169,7 +167,7 @@ class Certification(models.Model):
         return f"{self.name} - {self.employee.employee_code}"
 
 
-# --------- Performance ----------
+
 class PerformanceCycle(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=100)
@@ -232,7 +230,6 @@ class PerformanceEvaluation(models.Model):
         return f"{self.employee.employee_code} - {self.cycle.name}"
 
 
-# --------- Attendance & Leave ----------
 class AttendanceRecord(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     employee = models.ForeignKey(Employee, on_delete=models.CASCADE, related_name="attendance")
@@ -241,6 +238,7 @@ class AttendanceRecord(models.Model):
     check_out = models.TimeField(null=True, blank=True)
     source = models.CharField(max_length=20, default="manual")
     note = models.CharField(max_length=200, blank=True)
+    status = models.CharField(max_length=10, choices=[("P", "Present"), ("A", "Absent"), ("L", "Leave")])
 
     class Meta:
         unique_together = ("employee", "date")
@@ -249,6 +247,11 @@ class AttendanceRecord(models.Model):
     def __str__(self):
         return f"{self.employee.employee_code} - {self.date}"
 
+class LeaveRecord(models.Model):
+    employee = models.ForeignKey(Employee, on_delete=models.CASCADE, related_name="leaves")
+    start_date = models.DateField()
+    end_date = models.DateField()
+    reason = models.TextField(blank=True, null=True)
 
 class LeaveType(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -299,8 +302,26 @@ class LeaveRequest(models.Model):
     def __str__(self):
         return f"{self.employee.employee_code} {self.leave_type.name} {self.start_date}→{self.end_date} {self.status}"
 
+class BankDetail(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    employee = models.OneToOneField(Employee, on_delete=models.CASCADE, related_name="bank_detail")
+    account_number = models.CharField(max_length=30)
+    ifsc_code = models.CharField(max_length=20)
+    bank_name = models.CharField(max_length=100)
+    branch_name = models.CharField(max_length=100, blank=True, null=True)
+    is_active = models.BooleanField(default=True)
 
-# --------- Payroll ----------
+    def __str__(self):
+        return f"{self.employee.employee_code} - {self.bank_name}"
+    
+
+class Bonus(models.Model):
+    employee = models.ForeignKey(Employee, on_delete=models.CASCADE, related_name="bonuses")
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    reason = models.CharField(max_length=255)
+    date = models.DateField(default=date.today)
+
+
 class OvertimeRecord(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     employee = models.ForeignKey(Employee, on_delete=models.CASCADE, related_name="overtime")
@@ -332,6 +353,7 @@ class PayrollRun(models.Model):
     processed_at = models.DateTimeField(auto_now_add=True)
     processed_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True)
     note = models.TextField(blank=True, null=True)
+
 
 
 class Payslip(models.Model):

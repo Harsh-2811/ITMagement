@@ -8,27 +8,13 @@ from rest_framework.filters import OrderingFilter
 from api.users.models import User
 from api.organizations.models import Organization
 from api.partners.models import Partner
-from .models import Employee
-from .serializers import EmployeeInviteSerializer, EmployeeDetailSerializer
-from datetime import datetime
+from datetime import datetime , date , timedelta
 from rest_framework import generics, permissions, status
 from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser
 from django.shortcuts import get_object_or_404
-
-from .models import (
-    Department, JobRole, Employee, EmployeeContract, EmployeeDocument,
-    Skill, EmployeeSkill, Certification, PerformanceCycle, PerformanceGoal, PerformanceEvaluation,
-    AttendanceRecord, LeaveType, LeaveBalance, LeaveRequest,
-    OvertimeRecord, PayrollConfig, PayrollRun, Payslip , ResourceAssignment, ProjectSkillRequirement, ResourceForecast, UtilizationRecord
-)
-from .serializers import (
-    DepartmentSerializer, JobRoleSerializer, EmployeeSerializer, EmployeeContractSerializer, EmployeeDocumentSerializer,
-    SkillSerializer, EmployeeSkillSerializer, CertificationSerializer, PerformanceCycleSerializer, PerformanceGoalSerializer,
-    PerformanceEvaluationSerializer, AttendanceRecordSerializer, LeaveTypeSerializer, LeaveBalanceSerializer, LeaveRequestSerializer,
-    OvertimeRecordSerializer, PayrollConfigSerializer, PayrollRunSerializer, PayslipSerializer , ResourceAssignmentSerializer, ProjectSkillRequirementSerializer,
-    ResourceForecastSerializer, UtilizationRecordSerializer
-)
+from .models import *
+from .serializers import *
 from .utils import approve_leave, reject_leave, accrue_monthly_leave, generate_payroll_run , compute_utilization, utilization_band, recommend_employees, project_time_split, forecast_gaps
 
 from rest_framework.views import APIView
@@ -108,7 +94,6 @@ Thanks,
 
 
 
-# --- Catalog ---
 class DepartmentListCreateView(generics.ListCreateAPIView):
     queryset = Department.objects.all()
     serializer_class = DepartmentSerializer
@@ -130,7 +115,6 @@ class JobRoleDetailView(generics.RetrieveUpdateDestroyAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
 
-# --- Employee & docs ---
 class EmployeeListCreateView(generics.ListCreateAPIView):
     queryset = Employee.objects.select_related("user", "department", "job_role")
     serializer_class = EmployeeSerializer
@@ -168,7 +152,7 @@ class EmployeeDocumentDetailView(generics.RetrieveUpdateDestroyAPIView):
     parser_classes = [MultiPartParser, FormParser]
 
 
-# --- Skills & certs ---
+
 class SkillListCreateView(generics.ListCreateAPIView):
     queryset = Skill.objects.all()
     serializer_class = SkillSerializer
@@ -204,7 +188,7 @@ class CertificationDetailView(generics.RetrieveUpdateDestroyAPIView):
     parser_classes = [MultiPartParser, FormParser]
 
 
-# --- Performance ---
+
 class PerformanceCycleListCreateView(generics.ListCreateAPIView):
     queryset = PerformanceCycle.objects.all()
     serializer_class = PerformanceCycleSerializer
@@ -233,7 +217,7 @@ class PerformanceEvaluationListCreateView(generics.ListCreateAPIView):
 
     def get_queryset(self):
         user = self.request.user
-        if user.is_staff:  # HR/Admin can see all evaluations
+        if user.is_staff: 
             return PerformanceEvaluation.objects.all()
         return PerformanceEvaluation.objects.filter(employee=user)
 
@@ -294,16 +278,17 @@ class PerformanceEvaluationDetailView(generics.RetrieveUpdateDestroyAPIView):
         return PerformanceEvaluation.objects.filter(employee=user)
 
 
-# --- Attendance & Leave ---
+
 class AttendanceRecordListCreateView(generics.ListCreateAPIView):
     queryset = AttendanceRecord.objects.select_related("employee")
-    serializer_class = AttendanceRecordSerializer
+    serializer_class = AttendanceSerializer
     permission_classes = [permissions.IsAuthenticated]
 
 class AttendanceRecordDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = AttendanceRecord.objects.select_related("employee")
-    serializer_class = AttendanceRecordSerializer
+    serializer_class = AttendanceSerializer
     permission_classes = [permissions.IsAuthenticated]
+
 
 
 class LeaveTypeListCreateView(generics.ListCreateAPIView):
@@ -361,7 +346,7 @@ class LeaveRequestRejectView(generics.UpdateAPIView):
         return Response({"detail": "Rejected"}, status=status.HTTP_200_OK)
 
 
-# --- Payroll ---
+
 class OvertimeRecordListCreateView(generics.ListCreateAPIView):
     queryset = OvertimeRecord.objects.select_related("employee")
     serializer_class = OvertimeRecordSerializer
@@ -430,12 +415,10 @@ class ResourceAssignmentListCreateView(generics.ListCreateAPIView):
 
     def get_queryset(self):
         qs = super().get_queryset()
-        # active=1 => only overlapping today; add ?active=1
         active = self.request.query_params.get("active")
         if active:
             today = date.today()
             qs = qs.filter(start_date__lte=today, end_date__gte=today)
-        # window filtering: ?from=YYYY-MM-DD&to=YYYY-MM-DD
         s = self.request.query_params.get("from"); e = self.request.query_params.get("to")
         if s and e:
             S = datetime.strptime(s, "%Y-%m-%d").date()
@@ -474,39 +457,53 @@ class ResourceForecastDetailView(generics.RetrieveUpdateDestroyAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
 
-# --- Analytics / Actions ---
-
-# views.py
 class UtilizationReportView(APIView):
+    def get(self, request):
+        emp_id = request.query_params.get("employee_id")
+        week = request.query_params.get("week")  
+        if not emp_id or not week:
+            return Response({"error": "employee_id and week required"}, status=400)
+
+        emp = Employee.objects.get(pk=emp_id)
+        year, week_num = map(int, week.split("-"))
+        week_start = date.fromisocalendar(year, week_num, 1)
+        week_end = week_start + timedelta(days=6)
+
+        record = UtilizationRecord.objects.filter(employee=emp, week_start=week_start).first()
+
+        if record:
+            hours, utilization = compute_utilization(emp, week_start, week_end)
+            record.hours_logged = hours
+            record.utilization_percent = utilization
+            record.save(update_fields=["hours_logged", "utilization_percent"])
+        else:
+            hours, utilization = compute_utilization(emp, week_start, week_end)
+            record = UtilizationRecord.objects.create(
+                employee=emp, week_start=week_start,
+                hours_logged=hours, utilization_percent=utilization
+            )
+
+        return Response({
+            "employee": emp.name,
+            "week_start": week_start,
+            "hours_logged": record.hours_logged,
+            "utilization_percent": record.utilization_percent,
+        })
+
+
+class CrossProjectSplitView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
+        employee_id = request.query_params.get("employee")
         s = request.query_params.get("start")
         e = request.query_params.get("end")
-        if not s or not e:
-            return Response({"detail": "start and end are required (YYYY-MM-DD)."}, status=400)
-        try:
-            start = datetime.strptime(s, "%Y-%m-%d").date()
-            end = datetime.strptime(e, "%Y-%m-%d").date()
-        except ValueError:
-            return Response({"detail": "Invalid date format, use YYYY-MM-DD."}, status=400)
-        if end < start:
-            return Response({"detail": "end must be >= start."}, status=400)
+        start = datetime.strptime(s, "%Y-%m-%d").date()
+        end = datetime.strptime(e, "%Y-%m-%d").date()
+        data = project_time_split(employee_id, start, end)
+        return Response(data)
 
-        employee_id = request.query_params.get("employee")
-        project_id = request.query_params.get("project")
 
-        if employee_id:
-            m = compute_utilization(employee_id, start, end, project_id=project_id)
-            return Response({
-                "employee_id": str(employee_id),
-                "hours": float(m["hours"]),
-                "capacity": float(m["capacity"]),
-                "util_percent": float(m["util_percent"])
-            })
-        else:
-            band = utilization_band(Employee.objects.all(), start, end)
-            return Response(band)
 
 
 class RecommendationView(APIView):
@@ -568,21 +565,6 @@ class RecommendationView(APIView):
             heavy_booking_threshold_percent=heavy_thresh,
         )
         return Response(data)
-
-
-
-class CrossProjectSplitView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
-
-    def get(self, request):
-        employee_id = request.query_params.get("employee")
-        s = request.query_params.get("start")
-        e = request.query_params.get("end")
-        start = datetime.strptime(s, "%Y-%m-%d").date()
-        end = datetime.strptime(e, "%Y-%m-%d").date()
-        data = project_time_split(employee_id, start, end)
-        return Response(data)
-
 
 class CapacityPlanningView(APIView):
     permission_classes = [permissions.IsAuthenticated]

@@ -9,8 +9,8 @@ from .background_tasks import generate_progress_report
 def push_task_update(sender, instance, **kwargs):
     channel = f'project-{instance.project.id}'
     django_eventstream.send_event(
-        channel,                     # first positional arg: channel
-        'task_update',               # second positional arg: event_type
+        channel,                     
+        'task_update',               
         data={
             'task_id': instance.id,
             'task_name': instance.title,

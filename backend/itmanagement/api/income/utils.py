@@ -1,4 +1,4 @@
-# invoices/utils.py
+
 import io
 import tempfile
 from decimal import Decimal, ROUND_HALF_UP

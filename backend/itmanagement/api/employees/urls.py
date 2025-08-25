@@ -5,13 +5,13 @@ from .views import *
 
 urlpatterns = [
     path('invite/', EmployeeInviteView.as_view(), name='employee-invite'),
- # Catalog
+
     path("departments/", DepartmentListCreateView.as_view()),
     path("departments/<uuid:pk>/", DepartmentDetailView.as_view()),
     path("roles/", JobRoleListCreateView.as_view()),
     path("roles/<uuid:pk>/", JobRoleDetailView.as_view()),
 
-    # Employee + docs
+
     path("employees/", EmployeeListCreateView.as_view()),
     path("employees/<uuid:pk>/", EmployeeDetailView.as_view()),
     path("contracts/", EmployeeContractListCreateView.as_view()),
@@ -19,7 +19,7 @@ urlpatterns = [
     path("documents/", EmployeeDocumentListCreateView.as_view()),
     path("documents/<uuid:pk>/", EmployeeDocumentDetailView.as_view()),
 
-    # Skills & certs
+
     path("skills/", SkillListCreateView.as_view()),
     path("skills/<uuid:pk>/", SkillDetailView.as_view()),
     path("employee-skills/", EmployeeSkillListCreateView.as_view()),
@@ -27,7 +27,7 @@ urlpatterns = [
     path("certifications/", CertificationListCreateView.as_view()),
     path("certifications/<uuid:pk>/", CertificationDetailView.as_view()),
 
-    # Performance
+
     path("perf-cycles/", PerformanceCycleListCreateView.as_view()),
     path("perf-cycles/<uuid:pk>/", PerformanceCycleDetailView.as_view()),
     path("goals/", PerformanceGoalListCreateView.as_view()),
@@ -37,7 +37,7 @@ urlpatterns = [
     path("evaluations/<int:pk>/submit/", SubmitForReviewView.as_view(), name="evaluation-submit"),
     path("evaluations/<int:pk>/feedback/", AddFeedbackView.as_view(), name="evaluation-feedback"),
 
-    # Attendance & leave
+
     path("attendance/", AttendanceRecordListCreateView.as_view()),
     path("attendance/<uuid:pk>/", AttendanceRecordDetailView.as_view()),
     path("leave-types/", LeaveTypeListCreateView.as_view()),
@@ -48,7 +48,7 @@ urlpatterns = [
     path("leave-requests/<uuid:pk>/approve/", LeaveRequestApproveView.as_view()),
     path("leave-requests/<uuid:pk>/reject/", LeaveRequestRejectView.as_view()),
 
-    # Payroll
+
     path("overtime/", OvertimeRecordListCreateView.as_view()),
     path("overtime/<uuid:pk>/", OvertimeRecordDetailView.as_view()),
     path("payroll-config/", PayrollConfigListCreateView.as_view()),
@@ -58,16 +58,14 @@ urlpatterns = [
     path("payroll-runs/generate/", GeneratePayrollRunView.as_view()),
     path("payslips/", PayslipListView.as_view()),
     path("payslips/<uuid:pk>/", PayslipDetailView.as_view()),
-
-
-        path("assignments/", ResourceAssignmentListCreateView.as_view(), name="resource-assignment-list-create"),
+    path("assignments/", ResourceAssignmentListCreateView.as_view(), name="resource-assignment-list-create"),
     path("assignments/<uuid:pk>/", ResourceAssignmentDetailView.as_view(), name="resource-assignment-detail"),
     path("requirements/", ProjectSkillRequirementListCreateView.as_view(), name="resource-req-list-create"),
     path("requirements/<uuid:pk>/", ProjectSkillRequirementDetailView.as_view(), name="resource-req-detail"),
     path("forecasts/", ResourceForecastListCreateView.as_view(), name="resource-forecast-list-create"),
     path("forecasts/<uuid:pk>/", ResourceForecastDetailView.as_view(), name="resource-forecast-detail"),
 
-    # Analytics / Actions
+
     path("utilization/", UtilizationReportView.as_view(), name="resource-utilization"),
     path("recommendations/", RecommendationView.as_view(), name="resource-recommendations"),
     path("cross-project-split/", CrossProjectSplitView.as_view(), name="resource-cross-split"),

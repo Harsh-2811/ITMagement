@@ -98,16 +98,13 @@ class RequestProgressReportView(generics.CreateAPIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # Normalize to string (avoid UUID JSON serialization issues)
         project_code = str(project_code)
 
-        # Look up project by 'id' or 'project_id' field
         try:
             project = get_object_or_404(Project, pk=project_code)
         except Exception:
             project = get_object_or_404(Project, project_id=project_code)
 
-        # Trigger background task (pass as strings to avoid UUID serialization error)
         generate_progress_report(str(project.id), str(request.user.id), schedule=0)
 
         return Response(

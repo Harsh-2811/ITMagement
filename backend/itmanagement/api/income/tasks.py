@@ -1,4 +1,4 @@
-# invoices/tasks.py
+
 import logging
 from django.conf import settings
 from django.core.mail import EmailMessage, send_mail
@@ -6,7 +6,6 @@ from django.utils import timezone
 from django.db.models import Count
 
 from .models import Invoice, Payment
-# from .utils import generate_and_attach_pdf
 from .utils import allocate_payment
 
 logger = logging.getLogger(__name__)
@@ -47,7 +46,6 @@ DEFAULT_FROM = getattr(settings, "DEFAULT_FROM_EMAIL", "no-reply@example.com")
 #         logger.exception("Failed to send invoice %s", invoice_id)
 
 
-# === Payment allocation ===
 def allocate_payment_task(payment_id):
     """Background task: allocate a payment to invoices/partners."""
     try:
@@ -60,7 +58,6 @@ def allocate_payment_task(payment_id):
         logger.exception("Error allocating payment %s", payment_id)
 
 
-# === Invoice reminders & overdue processing ===
 def run_invoice_reminder_jobs():
     """Send reminders for due invoices and mark overdue ones."""
     reminder_days = getattr(settings, "INVOICE_REMINDER_DAYS_BEFORE", [7, 3, 1])
@@ -110,7 +107,6 @@ def run_invoice_reminder_jobs():
             logger.exception("Failed processing overdue invoice %s", inv.id)
 
 
-# === Reconcile orphaned payments ===
 def reconcile_allocations_for_unallocated_payments():
     """Try allocating all payments that don’t have allocations yet."""
     payments = Payment.objects.annotate(num_alloc=Count("allocations")).filter(num_alloc=0)

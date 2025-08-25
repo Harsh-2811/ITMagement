@@ -2,29 +2,30 @@ from django.dispatch import receiver
 from .models import LeaveRequest, LeaveBalance, Employee, EmployeeContract
 from .utils import approve_leave
 from api.dailytask.models import TaskTimeLog
-from .models import ResourceAssignment, UtilizationRecord
+from .models import *
 from .utils import compute_utilization
 from datetime import date, timedelta
 from django.db.models.signals import post_save, post_delete , pre_save
 @receiver(post_save, sender=Employee)
 def create_default_leave_balances(sender, instance, created, **kwargs):
     if created:
-        # Create default balances for all leave types when employee is onboarded
-        from .models import LeaveType
         for lt in LeaveType.objects.all():
             LeaveBalance.objects.get_or_create(employee=instance, leave_type=lt)
 
+
 @receiver(post_save, sender=LeaveRequest)
 def auto_approve_if_not_required(sender, instance, created, **kwargs):
-    # If a leave type doesn't require approval, auto-approve and deduct
     if created and not instance.leave_type.requires_approval:
         approve_leave(instance, manager_user=None)
 
+
 @receiver(post_save, sender=EmployeeContract)
 def mark_contract_status_on_save(sender, instance, **kwargs):
+    # simple safeguard to mark expired
     if instance.is_expired and instance.status != instance.Status.EXPIRED:
-        instance.status = instance.Status.EXPIRED
-        instance.save(update_fields=["status"])
+        # Avoid infinite loop by updating only when necessary
+        EmployeeContract.objects.filter(pk=instance.pk, status=instance.status)\
+            .update(status=EmployeeContract.Status.EXPIRED)
 
 def current_week_range():
     today = date.today()

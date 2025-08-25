@@ -1,27 +1,14 @@
 from rest_framework import generics, permissions, status , serializers
 from rest_framework.response import Response
-from .models import Client, Project, ProjectScope, Budget, TeamMember, Milestone , DeadlineNotification, EscalationLog
+from .models import *
 from .permissions import IsClientOrReadOnly, IsProjectManager, IsTeamMemberOfProject
-from .serializers import (
-    ClientSerializer,
-    ProjectSerializer,
-    ProjectDetailSerializer,
-    ProjectScopeSerializer,
-    BudgetSerializer,
-    TeamMemberCreateSerializer,
-    TeamMemberSerializer,
-    MilestoneSerializer,
-    DeadlineNotificationSerializer,
-    EscalationLogSerializer,
-    CriticalPathSerializer, 
-    DeadlineImpactSerializer
-)
+from .serializers import *
 from rest_framework import generics, status, serializers
 from rest_framework.permissions import IsAuthenticated, IsAdminUser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 import logging
-from .utils import compute_critical_path, deadline_impact_assessment, adjust_task_timeline
+from .utils import *
 from .tasks import process_deadline_notifications
 
 class ClientListCreateView(generics.ListCreateAPIView):
@@ -72,7 +59,6 @@ class ProjectDetailUpdateDeleteView(generics.RetrieveUpdateDestroyAPIView):
     permission_classes = [permissions.IsAuthenticated, IsProjectManager]
     queryset = Project.objects.all()
 
-#  Project Scope 
 class ProjectScopeListCreateView(generics.ListCreateAPIView):
     serializer_class = ProjectScopeSerializer
     permission_classes = [permissions.IsAuthenticated]
@@ -86,7 +72,6 @@ class ProjectScopeDetailView(generics.RetrieveUpdateDestroyAPIView):
     permission_classes = [permissions.IsAuthenticated]
     queryset = ProjectScope.objects.all()
 
-#  Budget 
 class BudgetListCreateView(generics.ListCreateAPIView):
     serializer_class = BudgetSerializer
     permission_classes = [permissions.IsAuthenticated]
@@ -100,7 +85,6 @@ class BudgetDetailView(generics.RetrieveUpdateDestroyAPIView):
     permission_classes = [permissions.IsAuthenticated]
     queryset = Budget.objects.all()
 
-# Team Member 
 class TeamMemberListCreateView(generics.ListCreateAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -115,7 +99,6 @@ class TeamMemberListCreateView(generics.ListCreateAPIView):
             return TeamMember.objects.filter(project_id=project_id)
         return TeamMember.objects.all()
 
-# Milestone 
 class MilestoneListCreateView(generics.ListCreateAPIView):
     serializer_class = MilestoneSerializer
     permission_classes = [permissions.IsAuthenticated]
@@ -133,12 +116,9 @@ class MilestoneDetailView(generics.RetrieveUpdateDestroyAPIView):
     permission_classes = [permissions.IsAuthenticated, IsTeamMemberOfProject]
 
 
-
-
 logger = logging.getLogger(__name__)
 
 
-#  Deadline Notifications 
 class DeadlineNotificationListCreateView(generics.ListCreateAPIView):
     serializer_class = DeadlineNotificationSerializer
     permission_classes = [IsAuthenticated]
@@ -159,7 +139,6 @@ class DeadlineNotificationDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = DeadlineNotification.objects.all()
 
 
-#  Admin Trigger: Run Deadline Processing 
 class RunDeadlineProcessingNowView(APIView):
     permission_classes = [IsAdminUser]
     # permission_classes = [IsAuthenticated]
@@ -173,7 +152,6 @@ class RunDeadlineProcessingNowView(APIView):
             return Response({"detail": "error running process"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-# Critical Path 
 class CriticalPathView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -190,8 +168,6 @@ class CriticalPathView(APIView):
             status=status.HTTP_400_BAD_REQUEST
             )
 
-        # if not project_id or not project_id.isdigit():
-        #     return Response({"detail": "project param required and must be numeric"}, status=status.HTTP_400_BAD_REQUEST)
         try:
             cp = compute_critical_path(int(project_id))
             serializer = CriticalPathSerializer(cp)
@@ -201,7 +177,6 @@ class CriticalPathView(APIView):
             return Response({"detail": "error computing critical path"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-# Deadline Impact
 class DeadlineImpactView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -229,7 +204,6 @@ class DeadlineImpactView(APIView):
             return Response({"detail": "error processing request"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-# Adjust Timeline 
 class AdjustTimelineSerializer(serializers.Serializer):
     task_id = serializers.IntegerField()
     start_date = serializers.DateField(required=False)

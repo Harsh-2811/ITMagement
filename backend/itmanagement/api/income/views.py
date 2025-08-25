@@ -1,4 +1,3 @@
-# invoices/views.py
 from decimal import Decimal
 from rest_framework import generics, status
 from rest_framework.response import Response
@@ -12,12 +11,8 @@ from django.shortcuts import get_object_or_404
 from django.conf import settings
 import logging
 from datetime import datetime
-from .models import Invoice, PartnerAllocation, InvoicePartnerShare, OrgPartnerShare, Payment , RevenueCategory, OrgPartnerShare, InvoicePartnerShare , TaxRule, TaxRecord
-from .serializers import (
-    InvoiceSerializer, PaymentSerializer, RevenueCategorySerializer,
-    OrgPartnerShareSerializer, InvoicePartnerShareSerializer, PartnerAllocationSerializer,TaxRuleSerializer, TaxRecordSerializer
-)
-# from .tasks import send_invoice_email_with_attachment
+from .models import *
+from .serializers import *
 from .tasks import allocate_payment_task
 from .utils import reporting_aggregate
 from .permissions import IsOwnerOrStaff
@@ -43,8 +38,6 @@ class InvoiceListCreateView(generics.ListCreateAPIView):
         else:
             qs = qs.filter(owner=user)
         return qs
-    # def perform_create(self, serializer):
-    #     serializer.save()
     def perform_create(self, serializer):
         org = getattr(self.request.user, "organization", None)
         serializer.save(owner=self.request.user, organization=org)

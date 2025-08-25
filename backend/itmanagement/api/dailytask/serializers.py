@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import DailyTask, TaskDependency, TaskTimeLog, StandupReport
+from .models import *
 import datetime
 
 

@@ -1,12 +1,5 @@
 from django.urls import path
-from .views import (
-    SprintListCreateView,
-    SprintDetailUpdateDeleteView,
-    StoryListCreateView,
-    StoryDetailUpdateDeleteView,
-    RetrospectiveListCreateView,
-    RetrospectiveDetailUpdateDeleteView,
-)
+from .views import *
 
 urlpatterns = [
     # Sprint URLs
