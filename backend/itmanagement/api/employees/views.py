@@ -98,6 +98,14 @@ class DepartmentListCreateView(generics.ListCreateAPIView):
     queryset = Department.objects.all()
     serializer_class = DepartmentSerializer
     permission_classes = [permissions.IsAuthenticated]
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(
+            serializer.data, 
+            status=status.HTTP_201_CREATED, 
+        )
 
 class DepartmentDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = Department.objects.all()
@@ -108,6 +116,15 @@ class JobRoleListCreateView(generics.ListCreateAPIView):
     queryset = JobRole.objects.all()
     serializer_class = JobRoleSerializer
     permission_classes = [permissions.IsAuthenticated]
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+
+        return Response(
+            serializer.data,
+            status=status.HTTP_201_CREATED
+        )
 
 class JobRoleDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = JobRole.objects.all()
@@ -116,12 +133,20 @@ class JobRoleDetailView(generics.RetrieveUpdateDestroyAPIView):
 
 
 class EmployeeListCreateView(generics.ListCreateAPIView):
-    queryset = Employee.objects.select_related("user", "department", "job_role")
+    queryset = Employee.objects.select_related("user", "department", "role")
     serializer_class = EmployeeSerializer
     permission_classes = [permissions.IsAuthenticated]
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        employee = serializer.save()
+        return Response(
+            self.get_serializer(employee).data,
+            status=status.HTTP_201_CREATED
+        )
 
 class EmployeeDetailView(generics.RetrieveUpdateDestroyAPIView):
-    queryset = Employee.objects.select_related("user", "department", "job_role")
+    queryset = Employee.objects.select_related("user", "department", "role")
     serializer_class = EmployeeSerializer
     permission_classes = [permissions.IsAuthenticated]
 
@@ -130,7 +155,7 @@ class EmployeeContractListCreateView(generics.ListCreateAPIView):
     queryset = EmployeeContract.objects.select_related("employee")
     serializer_class = EmployeeContractSerializer
     permission_classes = [permissions.IsAuthenticated]
-    parser_classes = [MultiPartParser, FormParser]
+    # parser_classes = [MultiPartParser, FormParser]
 
 class EmployeeContractDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = EmployeeContract.objects.select_related("employee")
@@ -222,7 +247,8 @@ class PerformanceEvaluationListCreateView(generics.ListCreateAPIView):
         return PerformanceEvaluation.objects.filter(employee=user)
 
     def perform_create(self, serializer):
-        serializer.save(employee=self.request.user)
+        serializer.save(manager=self.request.user)
+
 
 class SubmitForReviewView(APIView):
     permission_classes = [permissions.IsAuthenticated]
@@ -233,12 +259,13 @@ class SubmitForReviewView(APIView):
         except PerformanceEvaluation.DoesNotExist:
             return Response({"detail": "Not found"}, status=status.HTTP_404_NOT_FOUND)
 
-        if evaluation.employee != request.user:
+        if evaluation.employee.user != request.user:
             return Response({"detail": "Not allowed"}, status=status.HTTP_403_FORBIDDEN)
 
         evaluation.status = "submitted"
         evaluation.save()
         return Response({"status": "submitted"}, status=status.HTTP_200_OK)
+
 
 class AddFeedbackView(APIView):
     permission_classes = [permissions.IsAuthenticated]
@@ -249,7 +276,7 @@ class AddFeedbackView(APIView):
         except PerformanceEvaluation.DoesNotExist:
             return Response({"detail": "Not found"}, status=status.HTTP_404_NOT_FOUND)
 
-        if not request.user.is_staff and evaluation.evaluator != request.user:
+        if not request.user.is_staff and evaluation.manager != request.user:
             return Response({"detail": "Not allowed"}, status=status.HTTP_403_FORBIDDEN)
 
         evaluation.feedback = request.data.get("feedback", evaluation.feedback)
@@ -266,6 +293,9 @@ class AddFeedbackView(APIView):
             },
             status=status.HTTP_200_OK,
         )
+
+
+
 class PerformanceEvaluationDetailView(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = PerformanceEvaluationSerializer
     permission_classes = [permissions.IsAuthenticated]
@@ -288,7 +318,6 @@ class AttendanceRecordDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = AttendanceRecord.objects.select_related("employee")
     serializer_class = AttendanceSerializer
     permission_classes = [permissions.IsAuthenticated]
-
 
 
 class LeaveTypeListCreateView(generics.ListCreateAPIView):

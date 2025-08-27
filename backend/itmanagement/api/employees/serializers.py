@@ -7,7 +7,7 @@ class EmployeeInviteSerializer(serializers.Serializer):
     first_name = serializers.CharField()
     last_name = serializers.CharField()
     phone = serializers.CharField(required=False)
-    role = serializers.ChoiceField(choices=Employee.ROLE_CHOICES)
+    # role = serializers.ChoiceField(choices=Employee.ROLE_CHOICES)
     permissions = serializers.ChoiceField(choices=Employee.PERMISSION_CHOICES)
 
     def validate_email(self, value):

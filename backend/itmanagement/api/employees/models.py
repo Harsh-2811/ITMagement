@@ -54,7 +54,9 @@ class Employee(models.Model):
     name = models.CharField(max_length=100)
     designation = models.CharField(max_length=100, blank=True, null=True)
     department = models.ForeignKey("Department", on_delete=models.SET_NULL, null=True, related_name="employees")
-    job_role = models.ForeignKey("JobRole", on_delete=models.SET_NULL, null=True, related_name="employees")
+    role = models.ForeignKey(  
+        "JobRole", on_delete=models.SET_NULL, null=True, blank=True, related_name="employees"
+    )    
     manager = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="team_members")
     date_of_joining = models.DateField()
     date_of_exit = models.DateField(null=True, blank=True)
@@ -81,7 +83,7 @@ class Employee(models.Model):
         self.job_role = new_role
         if new_salary is not None:
             self.base_salary = Decimal(new_salary).quantize(Decimal("0.01"))
-        self.save(update_fields=["job_role", "base_salary", "updated_at"])
+        self.save(update_fields=["role", "base_salary", "updated_at"])
 
     def __str__(self):
         return f"{self.get_full_name()} - {self.job_role} @ {self.organization.name}"
@@ -96,12 +98,12 @@ class EmployeeContract(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     employee = models.ForeignKey(Employee, on_delete=models.CASCADE, related_name="contracts")
     title = models.CharField(max_length=200)
-    document = models.FileField(upload_to="hr/contracts/")
+    document = models.FileField(upload_to="employees/contracts/")
     start_date = models.DateField()
     end_date = models.DateField()
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.ACTIVE)
     auto_renew = models.BooleanField(default=False)
-    renewal_terms = models.JSONField(null=True, blank=True)
+    renewal_terms = models.CharField(null=True, blank=True)
     weekly_hours = models.PositiveIntegerField(default=40)
     uploaded_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -120,7 +122,7 @@ class EmployeeDocument(models.Model):
     doc_type = models.CharField(max_length=100)
     file = models.FileField(upload_to="employee/documents/")
     uploaded_at = models.DateTimeField(auto_now_add=True)
-    meta = models.JSONField(null=True, blank=True)
+    meta = models.CharField(null=True, blank=True)
 
     def __str__(self):
         return f"{self.doc_type} - {self.employee.employee_code}"
@@ -155,10 +157,10 @@ class Certification(models.Model):
     employee = models.ForeignKey(Employee, on_delete=models.CASCADE, related_name="certifications")
     name = models.CharField(max_length=200)
     authority = models.CharField(max_length=200, blank=True)
-    certificate_file = models.FileField(upload_to="hr/certifications/", null=True, blank=True)
+    certificate_file = models.FileField(upload_to="employees/certifications/", null=True, blank=True)
     issue_date = models.DateField()
     expiry_date = models.DateField(null=True, blank=True)
-    meta = models.JSONField(null=True, blank=True)
+    meta = models.CharField(null=True, blank=True)
 
     def is_expired(self):
         return self.expiry_date and date.today() > self.expiry_date

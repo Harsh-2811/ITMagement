@@ -34,8 +34,8 @@ urlpatterns = [
     path("goals/<uuid:pk>/", PerformanceGoalDetailView.as_view()),
     path("evaluations/", PerformanceEvaluationListCreateView.as_view()),
     path("evaluations/<uuid:pk>/", PerformanceEvaluationDetailView.as_view()),
-    path("evaluations/<int:pk>/submit/", SubmitForReviewView.as_view(), name="evaluation-submit"),
-    path("evaluations/<int:pk>/feedback/", AddFeedbackView.as_view(), name="evaluation-feedback"),
+    path("evaluations/<uuid:pk>/submit/", SubmitForReviewView.as_view(), name="evaluation-submit"),
+    path("evaluations/<uuid:pk>/feedback/", AddFeedbackView.as_view(), name="evaluation-feedback"),
 
 
     path("attendance/", AttendanceRecordListCreateView.as_view()),
