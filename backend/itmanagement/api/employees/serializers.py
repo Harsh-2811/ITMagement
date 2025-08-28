@@ -172,7 +172,6 @@ class PayslipSerializer(serializers.ModelSerializer):
         fields = "__all__"
         read_only_fields = ["generated_at", "line_items"]
 
-
 class ResourceAssignmentSerializer(serializers.ModelSerializer):
     class Meta:
         model = ResourceAssignment
@@ -183,8 +182,23 @@ class ResourceAssignmentSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("End date must be after start date")
 
         employee = data["employee"]
+        project = data["project"]
         start, end = data["start_date"], data["end_date"]
         allocation = data.get("allocation_percent", 0)
+
+        existing = ResourceAssignment.objects.filter(
+            employee=employee,
+            project=project,
+            start_date=start,
+            end_date=end,
+        )
+        if self.instance:  # if updating, exclude current record
+            existing = existing.exclude(pk=self.instance.pk)
+
+        if existing.exists():
+            raise serializers.ValidationError(
+                "This assignment already exists for the given employee, project, and dates."
+            )
 
         overlapping = ResourceAssignment.objects.filter(
             employee=employee,

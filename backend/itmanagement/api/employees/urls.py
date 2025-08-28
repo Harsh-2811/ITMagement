@@ -42,7 +42,7 @@ urlpatterns = [
     path("attendance/<uuid:pk>/", AttendanceRecordDetailView.as_view()),
     path("leave-types/", LeaveTypeListCreateView.as_view()),
     path("leave-types/<uuid:pk>/", LeaveTypeDetailView.as_view()),
-    path("leave-balances/", LeaveBalanceListView.as_view()),
+    path("leave-balances/", LeaveBalanceListCreateView.as_view()),
     path("leave-requests/", LeaveRequestListCreateView.as_view()),
     path("leave-requests/<uuid:pk>/", LeaveRequestDetailView.as_view()),
     path("leave-requests/<uuid:pk>/approve/", LeaveRequestApproveView.as_view()),
@@ -58,6 +58,8 @@ urlpatterns = [
     path("payroll-runs/generate/", GeneratePayrollRunView.as_view()),
     path("payslips/", PayslipListView.as_view()),
     path("payslips/<uuid:pk>/", PayslipDetailView.as_view()),
+
+    
     path("assignments/", ResourceAssignmentListCreateView.as_view(), name="resource-assignment-list-create"),
     path("assignments/<uuid:pk>/", ResourceAssignmentDetailView.as_view(), name="resource-assignment-detail"),
     path("requirements/", ProjectSkillRequirementListCreateView.as_view(), name="resource-req-list-create"),

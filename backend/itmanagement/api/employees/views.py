@@ -93,6 +93,18 @@ Thanks,
 
 
 
+class EmployeeListCreateView(generics.ListCreateAPIView):
+    queryset = Employee.objects.select_related("user", "department", "role")
+    serializer_class = EmployeeSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        employee = serializer.save()
+        return Response(
+            self.get_serializer(employee).data,
+            status=status.HTTP_201_CREATED
+        )
 
 class DepartmentListCreateView(generics.ListCreateAPIView):
     queryset = Department.objects.all()
@@ -132,18 +144,6 @@ class JobRoleDetailView(generics.RetrieveUpdateDestroyAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
 
-class EmployeeListCreateView(generics.ListCreateAPIView):
-    queryset = Employee.objects.select_related("user", "department", "role")
-    serializer_class = EmployeeSerializer
-    permission_classes = [permissions.IsAuthenticated]
-    def create(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        employee = serializer.save()
-        return Response(
-            self.get_serializer(employee).data,
-            status=status.HTTP_201_CREATED
-        )
 
 class EmployeeDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = Employee.objects.select_related("user", "department", "role")
@@ -327,19 +327,40 @@ class LeaveTypeListCreateView(generics.ListCreateAPIView):
 
 class LeaveTypeDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = LeaveType.objects.all()
+    
     serializer_class = LeaveTypeSerializer
     permission_classes = [permissions.IsAuthenticated]
 
 
-class LeaveBalanceListView(generics.ListAPIView):
+class LeaveBalanceListCreateView(generics.ListCreateAPIView):
     serializer_class = LeaveBalanceSerializer
     permission_classes = [permissions.IsAuthenticated]
+
     def get_queryset(self):
-        emp_id = self.request.query_params.get("employee")
         qs = LeaveBalance.objects.all()
-        if emp_id:
+
+        if not self.request.user.is_staff:
+            qs = qs.filter(employee=self.request.user.employee_profile)
+
+        emp_id = self.request.query_params.get("employee_id")
+        if emp_id and self.request.user.is_staff:
             qs = qs.filter(employee_id=emp_id)
+
         return qs
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        if request.user.is_staff:
+            leave_balance = serializer.save()
+        else:
+            leave_balance = serializer.save(employee=request.user.employee_profile)
+
+        return Response(
+            self.get_serializer(leave_balance).data,
+            status=status.HTTP_201_CREATED
+        )
 
 
 class LeaveRequestListCreateView(generics.ListCreateAPIView):
@@ -427,11 +448,12 @@ class PayslipListView(generics.ListAPIView):
     serializer_class = PayslipSerializer
     permission_classes = [permissions.IsAuthenticated]
 
+
+
 class PayslipDetailView(generics.RetrieveAPIView):
     queryset = Payslip.objects.select_related("employee", "payroll_run")
     serializer_class = PayslipSerializer
     permission_classes = [permissions.IsAuthenticated]
-
 
 
 class ResourceAssignmentListCreateView(generics.ListCreateAPIView):
@@ -485,38 +507,56 @@ class ResourceForecastDetailView(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = ResourceForecastSerializer
     permission_classes = [permissions.IsAuthenticated]
 
-
 class UtilizationReportView(APIView):
     def get(self, request):
         emp_id = request.query_params.get("employee_id")
         week = request.query_params.get("week")  
+
         if not emp_id or not week:
-            return Response({"error": "employee_id and week required"}, status=400)
-
-        emp = Employee.objects.get(pk=emp_id)
-        year, week_num = map(int, week.split("-"))
-        week_start = date.fromisocalendar(year, week_num, 1)
-        week_end = week_start + timedelta(days=6)
-
-        record = UtilizationRecord.objects.filter(employee=emp, week_start=week_start).first()
-
-        if record:
-            hours, utilization = compute_utilization(emp, week_start, week_end)
-            record.hours_logged = hours
-            record.utilization_percent = utilization
-            record.save(update_fields=["hours_logged", "utilization_percent"])
-        else:
-            hours, utilization = compute_utilization(emp, week_start, week_end)
-            record = UtilizationRecord.objects.create(
-                employee=emp, week_start=week_start,
-                hours_logged=hours, utilization_percent=utilization
+            return Response(
+                {"error": "employee_id and week required"},
+                status=status.HTTP_400_BAD_REQUEST
             )
 
+        try:
+            emp = Employee.objects.get(pk=emp_id)
+        except Employee.DoesNotExist:
+            return Response(
+                {"error": f"Employee with id {emp_id} not found"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        try:
+            year, week_num = map(int, week.split("-"))
+            week_start = date.fromisocalendar(year, week_num, 1)  # Monday
+            week_end = week_start + timedelta(days=6)             # Sunday
+        except Exception:
+            return Response(
+                {"error": "week must be in YYYY-WW format, e.g. 2025-35"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        util_data = compute_utilization(emp.id, week_start, week_end)
+
+        record, created = UtilizationRecord.objects.update_or_create(
+            employee=emp,
+            period_start=week_start,
+            defaults={
+                "period_end": week_end,
+                "hours_logged": util_data["hours"],
+                "utilization_percent": util_data["util_percent"],
+            }
+        )
+
         return Response({
-            "employee": emp.name,
+            "employee_id": str(emp.id),
+            "employee_name": str(emp),
             "week_start": week_start,
-            "hours_logged": record.hours_logged,
-            "utilization_percent": record.utilization_percent,
+            "week_end": week_end,
+            "hours_logged": util_data["hours"],
+            "capacity_hours": util_data["capacity"],
+            "utilization_percent": util_data["util_percent"],
+            "record_created": created,
         })
 
 
@@ -527,8 +567,25 @@ class CrossProjectSplitView(APIView):
         employee_id = request.query_params.get("employee")
         s = request.query_params.get("start")
         e = request.query_params.get("end")
-        start = datetime.strptime(s, "%Y-%m-%d").date()
-        end = datetime.strptime(e, "%Y-%m-%d").date()
+
+        if not employee_id or not s or not e:
+            return Response(
+                {"error": "Query params 'employee', 'start', and 'end' are required"},
+                status=400,
+            )
+
+        try:
+            start = datetime.strptime(s.strip(), "%Y-%m-%d").date()
+            end = datetime.strptime(e.strip(), "%Y-%m-%d").date()
+        except Exception as ex:
+            return Response(
+                {
+                    "error": "Invalid date format. Use YYYY-MM-DD.",
+                    "received": {"start": s, "end": e, "exception": str(ex)},
+                },
+                status=400,
+            )
+
         data = project_time_split(employee_id, start, end)
         return Response(data)
 
@@ -536,38 +593,34 @@ class CrossProjectSplitView(APIView):
 
 
 class RecommendationView(APIView):
-    """
-    POST:
-    {
-      "project": "<uuid|int>",
-      "start": "YYYY-MM-DD",
-      "end": "YYYY-MM-DD",
-      "requirements": [{"skill_id": "<uuid>", "min_level": 3}, ...],
-      "limit": 10,
-
-      // Optional (new):
-      "weights": {
-        "skill_coverage": 0.45,
-        "skill_level_fit": 0.25,
-        "free_capacity": 0.20,
-        "utilization": 0.10
-      },
-      "desired_hours_per_week": 20,        // float/decimal
-      "exclude_heavily_booked": true,      // bool
-      "heavy_booking_threshold_percent": 90 // 0..100
-    }
-    """
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
         from decimal import Decimal
-        project_id = request.data["project"]
-        start = datetime.strptime(request.data["start"], "%Y-%m-%d").date()
-        end = datetime.strptime(request.data["end"], "%Y-%m-%d").date()
+
+        project_id = request.data.get("project")
+        start_str = request.data.get("start")
+        end_str = request.data.get("end")
+
+        if not project_id or not start_str or not end_str:
+            return Response(
+                {"error": "Fields 'project', 'start', and 'end' are required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            start = datetime.strptime(start_str, "%Y-%m-%d").date()
+            end = datetime.strptime(end_str, "%Y-%m-%d").date()
+        except ValueError:
+            return Response(
+                {"error": "Invalid date format. Use YYYY-MM-DD"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         reqs = request.data.get("requirements", [])
         limit = int(request.data.get("limit", 10))
-
         weights = request.data.get("weights")
+
         desired = request.data.get("desired_hours_per_week")
         if desired is not None:
             try:
@@ -576,6 +629,7 @@ class RecommendationView(APIView):
                 desired = None
 
         exclude_heavy = bool(request.data.get("exclude_heavily_booked", False))
+
         heavy_thresh = request.data.get("heavy_booking_threshold_percent", 90)
         try:
             heavy_thresh = Decimal(str(heavy_thresh))
@@ -593,16 +647,50 @@ class RecommendationView(APIView):
             exclude_heavily_booked=exclude_heavy,
             heavy_booking_threshold_percent=heavy_thresh,
         )
+
         return Response(data)
 
 class CapacityPlanningView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
+    def parse_date(self, value: str):
+        """Try multiple date formats (YYYY-MM-DD or ISO8601)"""
+        if not value:
+            raise ValueError("Date value is missing")
+
+        value = value.strip()
+        try:
+            # Strict YYYY-MM-DD
+            return datetime.strptime(value, "%Y-%m-%d").date()
+        except ValueError:
+            try:
+                # ISO 8601 with optional Z
+                return datetime.fromisoformat(value.replace("Z", "+00:00")).date()
+            except Exception:
+                raise ValueError(f"Invalid date format received: '{value}'")
+
     def get(self, request):
-        project_id = request.query_params.get("project")
+        project_id = request.query_params.get("project")   # ✅ match your URL
         s = request.query_params.get("start")
         e = request.query_params.get("end")
-        start = datetime.strptime(s, "%Y-%m-%d").date()
-        end = datetime.strptime(e, "%Y-%m-%d").date()
+
+        # Debugging: log exactly what values we got
+        print("DEBUG project:", repr(project_id))
+        print("DEBUG start:", repr(s))
+        print("DEBUG end:", repr(e))
+
+        if not s or not e:
+            return Response(
+                {"error": "Both 'start' and 'end' query parameters are required (YYYY-MM-DD or ISO 8601)."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            start = self.parse_date(s)
+            end = self.parse_date(e)
+        except ValueError as ex:
+            return Response({"error": str(ex)}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Call your business logic
         data = forecast_gaps(project_id, start, end)
         return Response(data)

@@ -86,7 +86,7 @@ class Employee(models.Model):
         self.save(update_fields=["role", "base_salary", "updated_at"])
 
     def __str__(self):
-        return f"{self.get_full_name()} - {self.job_role} @ {self.organization.name}"
+        return f"{self.get_full_name()} - {self.role} @ {self.organization.name}"
 
 
 class EmployeeContract(models.Model):
@@ -415,7 +415,7 @@ class ResourceAssignment(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        unique_together = ("employee", "project", "start_date", "end_date")
+        # unique_together = ("employee", "project", "start_date", "end_date")
         ordering = ["-start_date"]
         indexes = [
             models.Index(fields=["employee", "start_date", "end_date"]),

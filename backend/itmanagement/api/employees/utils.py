@@ -122,12 +122,15 @@ def daterange_weeks(start: date, end: date):
 
 
 def hours_logged(employee_id, start, end, project_id: int | None = None) -> Decimal:
-    qs = TaskTimeLog.objects.filter(user_id=Employee.objects.get(id=employee_id).user_id,
-                                    date__gte=start, date__lte=end)
+    qs = TaskTimeLog.objects.filter(
+        user_id=Employee.objects.get(id=employee_id).user_id,
+        date__gte=start, date__lte=end
+    )
     if project_id:
         qs = qs.filter(task__project_id=project_id)
-    total = qs.aggregate(total=Sum("hours"))["total"] or Decimal("0.00")
+    total = qs.aggregate(total=Sum("hours_spent"))["total"] or Decimal("0.00")
     return q2(total)
+
 
 def weekly_capacity_hours(
     employee_id,
@@ -190,12 +193,23 @@ def weekly_capacity_hours(
     total = q2(total - leave_hours)
     return total if total > 0 else Decimal("0.00")
 
-
 def compute_utilization(employee_id, start, end, project_id=None):
+    """
+    Calculate utilization for an employee between start and end dates.
+    Returns dict with hours, capacity, and utilization %.
+    """
     hours = hours_logged(employee_id, start, end, project_id=project_id)
-    capacity = weekly_capacity_hours(employee_id, start, end, project_id=project_id, use_planned=True)
+    capacity = weekly_capacity_hours(
+        employee_id, start, end, project_id=project_id, use_planned=True
+    )
     util = q2((hours / capacity * 100) if capacity > 0 else 0)
-    return {"hours": hours, "capacity": capacity, "util_percent": util}
+
+    return {
+        "hours": hours,
+        "capacity": capacity,
+        "util_percent": util,
+    }
+
 
 def utilization_band(employees_qs, start, end, over_threshold=Decimal("100"), under_threshold=Decimal("60")):
     """
@@ -352,14 +366,13 @@ def recommend_employees(
 
 
 def project_time_split(employee_id, start, end):
-    """
-    Cross-project split of actual hours.
-    """
     emp = Employee.objects.get(id=employee_id)
-    rows = (TaskTimeLog.objects.filter(user_id=emp.user_id, date__gte=start, date__lte=end)
-            .values("task__project_id", "task__project__name")
-            .annotate(hours=Sum("hours"))
-            .order_by("-hours"))
+    rows = (
+        TaskTimeLog.objects.filter(user_id=emp.user_id, date__gte=start, date__lte=end)
+        .values("task__project_id", "task__project__name")
+        .annotate(hours=Sum("hours_spent")) 
+        .order_by("-hours")
+    )
     total = sum([r["hours"] for r in rows]) or 0
     out = []
     for r in rows:
@@ -370,23 +383,71 @@ def project_time_split(employee_id, start, end):
             "hours": float(r["hours"]),
             "percent": pct
         })
-    return {"employee_id": str(emp.id), "employee_code": emp.employee_code, "split": out}
+    return {
+        "employee_id": str(emp.id),
+        "employee_code": emp.employee_code,
+        "split": out
+    }
 
+
+import logging
+from decimal import Decimal
+
+logger = logging.getLogger(__name__)
 
 def forecast_gaps(project_id, start, end):
     demand_hours = Decimal("0.00")
     planned = Decimal("0.00")
 
     for wk_start, wk_end in daterange_weeks(start, end):
-        overlap_start = max(wk_start, start); overlap_end = min(wk_end, end)
+        overlap_start = max(wk_start, start)
+        overlap_end = min(wk_end, end)
+        if overlap_start > overlap_end:
+            continue
+
         days = (overlap_end - overlap_start).days + 1
         frac = Decimal(days) / Decimal("7")
 
-        for rf in ResourceForecast.objects.filter(project_id=project_id, start_date__lte=wk_end, end_date__gte=wk_start):
+        logger.info(f"Week window: {wk_start} to {wk_end}, overlap: {overlap_start} → {overlap_end}, fraction={frac}")
+
+        forecasts = ResourceForecast.objects.filter(
+            project_id=project_id,
+            start_date__lte=wk_end,
+            end_date__gte=wk_start,
+        )
+        if not forecasts.exists():
+            logger.warning(f"No forecasts found for project={project_id} in week {wk_start} to {wk_end}")
+
+        for rf in forecasts:
+            logger.info(
+                f"Forecast ID={rf.id}, range={rf.start_date}→{rf.end_date}, "
+                f"hours/wk={rf.required_hours_per_week}, headcount={rf.headcount}"
+            )
             demand_hours += (rf.required_hours_per_week * rf.headcount) * frac
 
-        for ra in ResourceAssignment.objects.filter(project_id=project_id, start_date__lte=wk_end, end_date__gte=wk_start):
+        assignments = ResourceAssignment.objects.filter(
+            project_id=project_id,
+            start_date__lte=wk_end,
+            end_date__gte=wk_start,
+        )
+        if not assignments.exists():
+            logger.warning(f"No assignments found for project={project_id} in week {wk_start} to {wk_end}")
+
+        for ra in assignments:
+            logger.info(
+                f"Assignment ID={ra.id}, range={ra.start_date}→{ra.end_date}, "
+                f"hours/wk={ra.planned_hours_per_week}, allocation={ra.allocation_percent}"
+            )
             planned += (ra.planned_hours_per_week * (ra.allocation_percent / Decimal("100.00"))) * frac
 
     gap = q2(demand_hours - planned)
-    return {"demand_hours": float(q2(demand_hours)), "planned_hours": float(q2(planned)), "gap_hours": float(gap)}
+    result = {
+        "demand_hours": float(q2(demand_hours)),
+        "planned_hours": float(q2(planned)),
+        "gap_hours": float(gap),
+    }
+
+    logger.info(f"Final result for project={project_id}, {start}→{end}: {result}")
+    return result
+
+
