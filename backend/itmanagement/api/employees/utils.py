@@ -8,8 +8,8 @@ from api.dailytask.models import TaskTimeLog, DailyTask
 
 TWOPLACES = Decimal("0.01")
 
-def q2(v) -> Decimal:
-    return (v if isinstance(v, Decimal) else Decimal(str(v))).quantize(TWOPLACES, rounding=ROUND_HALF_UP)
+def q2(x):  
+    return (x if isinstance(x, Decimal) else Decimal(str(x))).quantize(TWOPLACES, rounding=ROUND_HALF_UP)
 
 
 def accrue_monthly_leave(employee: Employee, as_of: date | None = None):
@@ -104,12 +104,6 @@ def generate_payroll_run(period_start, period_end, processed_by):
     for emp in Employee.objects.filter(status=Employee.Status.ACTIVE):
         generate_payslip_for_employee(run, emp)
     return run
-
-
-
-def q2(x):  
-    return (x if isinstance(x, Decimal) else Decimal(str(x))).quantize(TWOPLACES, rounding=ROUND_HALF_UP)
-
 
 def daterange_weeks(start: date, end: date):
     """Yield (wk_start, wk_end) tuples (Mon..Sun)."""

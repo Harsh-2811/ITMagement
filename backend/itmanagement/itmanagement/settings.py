@@ -58,6 +58,7 @@ INSTALLED_APPS = [
     'api.income',
     'api.expense',
     'api.financial_analytics',
+    'api.dashboard',
     'rest_framework_simplejwt',
     'rest_framework_simplejwt.token_blacklist',
     'django_eventstream',

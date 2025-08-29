@@ -42,5 +42,6 @@ urlpatterns = [
     path('api/progresstracking/', include('api.progresstracking.urls')),
     path('api/income/', include('api.income.urls')),
     path('api/expense/', include('api.expense.urls')),
-    path('api/financial_analytics/', include('api.financial_analytics.urls'))
+    path('api/financial_analytics/', include('api.financial_analytics.urls')),
+    path('api/dashboard/', include('api.dashboard.urls')),
 ]  
