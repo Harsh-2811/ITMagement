@@ -117,7 +117,7 @@ class Migration(migrations.Migration):
                 ('id', models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False)),
                 ('name', models.CharField(max_length=200)),
                 ('authority', models.CharField(blank=True, max_length=200)),
-                ('certificate_file', models.FileField(blank=True, null=True, upload_to='hr/certifications/')),
+                ('certificate_file', models.FileField(blank=True, null=True, upload_to='employees/certifications/')),
                 ('issue_date', models.DateField()),
                 ('expiry_date', models.DateField(blank=True, null=True)),
                 ('meta', models.JSONField(blank=True, null=True)),
@@ -151,7 +151,7 @@ class Migration(migrations.Migration):
             fields=[
                 ('id', models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False)),
                 ('title', models.CharField(max_length=200)),
-                ('document', models.FileField(upload_to='hr/contracts/')),
+                ('document', models.FileField(upload_to='employees/contracts/')),
                 ('start_date', models.DateField()),
                 ('end_date', models.DateField()),
                 ('status', models.CharField(choices=[('Active', 'Active'), ('Expired', 'Expired'), ('Terminated', 'Terminated')], default='Active', max_length=20)),

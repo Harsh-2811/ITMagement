@@ -25,6 +25,10 @@ load_dotenv()
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = 'django-insecure-p#gq9e@((26j6i3cw&(lt%d(()90n!jbjfnl5z&=yt$j%d9vco'
 
+import warnings
+warnings.filterwarnings("ignore", category=UserWarning, module="coreapi.utils")
+
+
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
@@ -54,7 +58,9 @@ INSTALLED_APPS = [
     'api.projects',
     'api.sprints',
     'api.dailytask',
-    'api.progresstracking',
+    # 'api.progresstracking',
+    "api.progresstracking.apps.ProgressTrackingConfig",
+
     'api.income',
     'api.expense',
     'api.financial_analytics',
@@ -76,7 +82,7 @@ CHANNEL_LAYERS = {
 }
 
 
-DEFAULT_FROM_EMAIL = "no-reply@example.com"
+DEFAULT_FROM_EMAIL = "khokhariavidhya@example.com"
 FINANCE_NOTIFICATION_EMAILS = ["finance@example.com"]
 INVOICE_REMINDER_DAYS_BEFORE = [7, 3, 1]
 INVOICE_ALLOCATE_ASYNC = False  # True to run partner allocation in background
@@ -165,7 +171,10 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
 STATIC_URL = 'static/'
+import os
 
+MEDIA_URL = '/media/'
+MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 

@@ -12,7 +12,6 @@ from django.db.models import Sum, Count
 class CommonEmployeesAPI(APIView):
     """
     API to list out common employees across multiple partners/organizations.
-    Now includes partner-wise mapping.
     """
     permission_classes = [IsAuthenticated]
 
