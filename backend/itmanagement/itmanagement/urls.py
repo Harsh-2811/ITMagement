@@ -19,9 +19,8 @@ from django.urls import path, include
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView, SpectacularRedocView
 
 
-
 urlpatterns = [
-    path('admin/', admin.site.urls),
+    path('admin/', admin.site.urls),  # Use default Django admin
     path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
 
     # Swagger UI
@@ -35,7 +34,7 @@ urlpatterns = [
     path('api/organizations/', include('api.organizations.urls')),
     path('api/partners/', include('api.partners.urls')),
     path('api/employees/', include('api.employees.urls')),
-    # path('api/agreements/', include('api.agreements.urls')),
+    path('api/agreements/', include('api.agreements.urls')),
     path('api/projects/', include('api.projects.urls')),
     path('api/sprints/', include('api.sprints.urls')),
     path('api/dailytask/', include('api.dailytask.urls')),

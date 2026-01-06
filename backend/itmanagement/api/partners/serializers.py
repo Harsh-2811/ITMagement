@@ -1,6 +1,59 @@
 from rest_framework import serializers
+from django.contrib.auth.hashers import make_password
 from api.users.models import User
 from .models import Partner
+
+
+class MainPartnerRegistrationSerializer(serializers.ModelSerializer):
+    """
+    Serializer for registering a main partner separately.
+    Enforces username uniqueness.
+    """
+    password = serializers.CharField(write_only=True, min_length=8)
+    confirm_password = serializers.CharField(write_only=True)
+
+    class Meta:
+        model = User
+        fields = ['username', 'email', 'phone', 'first_name', 'last_name', 'password', 'confirm_password']
+
+    def validate_username(self, value):
+        """Check if username already exists"""
+        if User.objects.filter(username=value).exists():
+            raise serializers.ValidationError("Username already exists. Please choose a different username.")
+        return value
+
+    def validate_email(self, value):
+        """Check if email already exists"""
+        if User.objects.filter(email=value).exists():
+            raise serializers.ValidationError("A user with this email already exists.")
+        return value
+
+    def validate(self, attrs):
+        """Validate that passwords match"""
+        password = attrs.get('password')
+        confirm_password = attrs.get('confirm_password')
+        
+        if password != confirm_password:
+            raise serializers.ValidationError({
+                'confirm_password': 'Passwords do not match.'
+            })
+        
+        return attrs
+
+    def create(self, validated_data):
+        """Create main partner user"""
+        # Remove confirm_password from validated_data
+        validated_data.pop('confirm_password')
+        
+        # Set user type and hash password
+        validated_data['user_type'] = 'organization_admin'
+        validated_data['is_verified'] = False
+        validated_data['password'] = make_password(validated_data['password'])
+        
+        user = User.objects.create(**validated_data)
+        print(f"[DEBUG] Created main partner user: {user.username}")
+        
+        return user
 
 
 class PartnerUserSerializer(serializers.ModelSerializer):

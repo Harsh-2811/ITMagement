@@ -32,7 +32,7 @@ warnings.filterwarnings("ignore", category=UserWarning, module="coreapi.utils")
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ['192.168.1.19', '192.168.1.120','127.0.0.1']
 
 
 # Application definition
@@ -109,7 +109,7 @@ TEMPLATES = [
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
         'DIRS': ['templates'],
         'APP_DIRS': True,
-        'OPTIONS': {
+        'OPTIONS': { 
             'context_processors': [
                 'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
@@ -151,8 +151,12 @@ AUTH_PASSWORD_VALIDATORS = [
 ]
 
 CORS_ALLOWED_ORIGINS = [
-    "http://localhost:3000",  # Vite dev server
+    "http://192.168.1.120:3000",
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://192.168.1.19:3000"
 ]
+
 CORS_ALLOW_CREDENTIALS = True
 
 # Internationalization
@@ -199,8 +203,14 @@ SIMPLE_JWT = {
     'AUTH_HEADER_TYPES': ('Bearer',),
 }
 
-EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
-DEFAULT_FROM_EMAIL = 'admin@example.com'
+EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+EMAIL_HOST = 'smtp.gmail.com'
+EMAIL_PORT = 587
+EMAIL_USE_TLS = True
+EMAIL_HOST_USER = 'khokhariavidhya@gmail.com'
+EMAIL_HOST_PASSWORD = 'vmfdnnkoxicbeyug'  # Remove spaces from app password
+DEFAULT_FROM_EMAIL = 'khokhariavidhya@gmail.com'
+EMAIL_USE_SSL = False
 FRONTEND_URL = 'http://localhost:3000'
 GOOGLE_CLIENT_ID='1048002835629-uos1fu02i0fa6bsirg55iktoff1bbrlv.apps.googleusercontent.com'
 
@@ -220,7 +230,8 @@ LOGGING = {
     'handlers': {
         'console': {
             'class': 'logging.StreamHandler',
-            'formatter': 'simple'
+            'formatter': 'simple',
+            'level': 'INFO',
         },
     },
     'root': {

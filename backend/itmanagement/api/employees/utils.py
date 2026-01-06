@@ -65,22 +65,54 @@ def generate_payslip_for_employee(run: PayrollRun, employee: Employee):
     ).aggregate(total=Sum("hours"))["total"] or Decimal("0.00")
     overtime_pay = q2(ot_hours * cfg.overtime_hour_rate)
 
-    gross = q2(basic + hra + overtime_pay)
+    # Calculate leave deductions
+    leave_days = 0
+    unpaid_leave_days = 0
+    approved_leaves = LeaveRequest.objects.filter(
+        employee=employee, 
+        status=LeaveRequest.Status.APPROVED,
+        start_date__lte=run.period_end, 
+        end_date__gte=run.period_start
+    )
+    
+    for leave in approved_leaves:
+        overlap_start = max(leave.start_date, run.period_start)
+        overlap_end = min(leave.end_date, run.period_end)
+        days_in_period = (overlap_end - overlap_start).days + 1
+        leave_days += days_in_period
+        
+        # Check if this leave type is unpaid (doesn't accrue balance)
+        if not leave.leave_type.accrual_per_month or leave.leave_type.accrual_per_month == 0:
+            unpaid_leave_days += days_in_period
+
+    # Calculate per-day salary deduction for unpaid leave
+    working_days_in_month = 22  # Standard working days
+    daily_salary = q2(base / working_days_in_month)
+    leave_deduction = q2(daily_salary * unpaid_leave_days)
+
+    gross = q2(basic + hra + overtime_pay - leave_deduction)
 
     pf_emp = q2(basic * cfg.pf_employee_percent / Decimal("100"))
     esi_emp = q2(gross * cfg.esi_employee_percent / Decimal("100"))
     income_tax = q2(gross * cfg.income_tax_percent / Decimal("100")) 
 
-    deductions = q2(pf_emp + esi_emp + income_tax)
+    deductions = q2(pf_emp + esi_emp + income_tax + leave_deduction)
     net = q2(gross - deductions)
 
     line_items = {
         "structure": {"basic": float(basic), "hra": float(hra)},
         "overtime": {"hours": float(ot_hours), "amount": float(overtime_pay)},
+        "leave": {
+            "total_leave_days": int(leave_days),
+            "unpaid_leave_days": int(unpaid_leave_days),
+            "daily_salary": float(daily_salary),
+            "leave_deduction": float(leave_deduction)
+        },
         "deductions": {
             "pf_employee": float(pf_emp),
             "esi_employee": float(esi_emp),
             "income_tax": float(income_tax),
+            "leave_deduction": float(leave_deduction),
         },
         "gross": float(gross),
         "net": float(net),
@@ -92,7 +124,7 @@ def generate_payslip_for_employee(run: PayrollRun, employee: Employee):
             status=Payslip.Status.FINAL,
             gross=gross, basic=basic, hra=hra, overtime_pay=overtime_pay,
             pf_employee=pf_emp, esi_employee=esi_emp, income_tax=income_tax,
-            other_deductions=Decimal("0.00"), net_pay=net, line_items=line_items
+            other_deductions=leave_deduction, net_pay=net, line_items=line_items
         )
     )
     return payslip

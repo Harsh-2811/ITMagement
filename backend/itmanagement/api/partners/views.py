@@ -10,7 +10,8 @@ from .models import Partner
 from .serializers import (
     PartnerSerializer,
     PartnerInvitationSerializer,
-    PartnerDetailSerializer
+    PartnerDetailSerializer,
+    MainPartnerRegistrationSerializer
 )
 
 
@@ -28,6 +29,60 @@ class IsMainPartnerOrAdmin(permissions.BasePermission):
             return partner is not None
         
         return False
+
+
+class MainPartnerRegistrationView(generics.CreateAPIView):
+    """
+    Register a main partner separately (without organization).
+    Username uniqueness is enforced.
+    """
+    serializer_class = MainPartnerRegistrationSerializer
+    permission_classes = [permissions.AllowAny]
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        if serializer.is_valid():
+            try:
+                # Create the main partner user
+                user = serializer.save()
+                
+                print(f"[MAIN PARTNER REGISTRATION] Created user: {user.username}")
+                
+                return Response({
+                    'message': 'Main partner registered successfully',
+                    'user_id': user.id,
+                    'username': user.username,
+                    'email': user.email,
+                    'user_type': user.user_type,
+                    'is_verified': user.is_verified
+                }, status=status.HTTP_201_CREATED)
+                
+            except Exception as e:
+                print(f"[ERROR] Main partner registration failed: {e}")
+                return Response({
+                    'error': 'Registration failed',
+                    'details': str(e)
+                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
+        # Return validation errors with user-friendly message
+        return Response({
+            'error': 'Validation failed',
+            'message': self.get_first_error_message(serializer.errors),
+            'errors': serializer.errors
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    def get_first_error_message(self, errors):
+        """Extract the first error message for frontend-friendly display"""
+        if not errors:
+            return "Validation failed"
+        
+        first_field = next(iter(errors))
+        field_errors = errors[first_field]
+        
+        if isinstance(field_errors, list):
+            return str(field_errors[0]) if field_errors else f"{first_field} is invalid"
+        else:
+            return str(field_errors)
 
 
 class PartnerInviteView(generics.CreateAPIView):
@@ -92,7 +147,7 @@ Please login and change your password immediately.
 Best regards,
 {request.user.first_name} {request.user.last_name}
                     """,
-                    from_email='admin@example.com',
+                    from_email='khokhariavidhya@gmail.com',
                     recipient_list=[new_user.email],
                     fail_silently=False,
                 )

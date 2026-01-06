@@ -27,22 +27,29 @@ class OrganizationRegistrationSerializer(serializers.ModelSerializer):
         read_only_fields = ['verification_status', 'is_active']
 
     def create(self, validated_data):
+        print(f"[DEBUG] OrganizationRegistrationSerializer.create called")
+        print(f"[DEBUG] validated_data keys: {list(validated_data.keys())}")
+        
         partner_data = validated_data.pop('main_partner')
+        print(f"[DEBUG] partner_data: {partner_data}")
         
         # Create the user first
         partner_user = MainPartnerSerializer().create(partner_data)
+        print(f"[DEBUG] Created partner user: {partner_user.id} - {partner_user.username}")
         
         # Create organization
         org = Organization.objects.create(**validated_data)
+        print(f"[DEBUG] Created organization: {org.id} - {org.name}")
         
         # Create partner profile linking user to organization
         from api.partners.models import Partner
-        Partner.objects.create(
+        partner = Partner.objects.create(
             user=partner_user,
             organization=org,
             role='main_partner',
             permissions='all'
         )
+        print(f"[DEBUG] Created partner profile: {partner.id}")
         
         return org
 

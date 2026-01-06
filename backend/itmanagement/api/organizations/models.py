@@ -18,12 +18,11 @@ class Organization(models.Model):
     registration_number = models.CharField(max_length=100, unique=True)
     tax_id = models.CharField(max_length=100, blank=True)
 
-    email = models.EmailField()
-    phone = models.CharField(max_length=20)
+    company_email = models.EmailField()
+    company_phone = models.CharField(max_length=20)
     website = models.URLField(blank=True)
 
-    address_line1 = models.CharField(max_length=255)
-    address_line2 = models.CharField(max_length=255, blank=True)
+    address = models.CharField(max_length=255)
     city = models.CharField(max_length=100)
     state = models.CharField(max_length=100)
     postal_code = models.CharField(max_length=20)

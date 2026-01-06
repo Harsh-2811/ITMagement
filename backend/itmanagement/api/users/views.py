@@ -149,6 +149,56 @@ class ResetPasswordView(APIView):
         if not password:
             return Response({"error": "Password is required"}, status=400)
 
+        # Check if this is an organization verification token
+        from django.core.cache import cache
+        cached_data = cache.get(f'verify_org_{token}')
+        
+        if cached_data and cached_data.get('user_id') == str(user.id):
+            # This is organization verification - activate the organization
+            try:
+                from api.organizations.models import Organization
+                organization = Organization.objects.get(id=cached_data['org_id'])
+                
+                # Activate organization
+                organization.verification_status = 'approved'
+                organization.is_active = True
+                organization.save()
+                
+                print(f"[ORG VERIFICATION] Organization {organization.name} verified and activated via reset password")
+                
+                # Send confirmation email
+                try:
+                    send_mail(
+                        subject=f'Organization Verified Successfully - {organization.name}',
+                        message=f"""
+Hi {user.first_name},
+
+🎉 Congratulations! Your organization '{organization.name}' has been successfully verified and activated.
+
+Your organization is now LIVE and ready to use!
+
+Your new password has been set successfully.
+
+Organization Dashboard: {settings.FRONTEND_URL}/dashboard
+Support: If you need any help, contact our support team.
+
+Best regards,
+Admin Team
+                        """,
+                        from_email='khokhariavidhya@gmail.com',
+                        recipient_list=[user.email],
+                        fail_silently=False,
+                    )
+                except Exception as e:
+                    print(f"Failed to send organization verification confirmation email: {e}")
+                
+                # Clear verification cache
+                cache.delete(f'verify_org_{token}')
+                
+            except Organization.DoesNotExist:
+                print(f"Organization not found for verification: {cached_data.get('org_id')}")
+
+        # Set new password
         user.set_password(password)
         user.save()  # This invalidates the token!
 

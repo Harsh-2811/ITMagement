@@ -4,6 +4,7 @@ from .views import (
     OrganizationApproveView,
     OrganizationListView,
     PendingOrganizationListView,
+    verify_organization,
     reject_organization
 )
 
@@ -13,4 +14,5 @@ urlpatterns = [
     path('pending/', PendingOrganizationListView.as_view(), name='pending-organizations'),
     path('<uuid:pk>/approve/', OrganizationApproveView.as_view(), name='organization-approve'),
     path('<uuid:pk>/reject/', reject_organization, name='organization-reject'),
+    path('verify/', verify_organization, name='organization-verify'),
 ]
